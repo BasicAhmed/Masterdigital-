@@ -609,7 +609,7 @@ export async function createShareCardBlob(params: ShareCardParams): Promise<Blob
     text(ctx, history[history.length - 1].date, px + pw - 40, py + 156, { font: `500 18px ${MONO}`, color: C.subtle, align: "right" });
   } else {
     const feats = [
-      ["⚡", "تحويل خلال 30 دقيقة"],
+      ["⚡", "تحويل خلال دقائق"],
       ["🛡️", "سعر مثبّت عند التأكيد"],
       ["💬", "دعم فوري واتساب"],
     ];
