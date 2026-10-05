@@ -1,45 +1,42 @@
-export type CurrencyCode = "SDG" | "EGP" | "UGX" | "RWF" | "KES" | "USDT";
+import { CURRENCIES as BASE, PAIRS as CORRIDORS, type CurrencyCode } from "./corridors";
 
+export type { CurrencyCode };
+
+/** The management screens (transactions, customers, finance) read currencies
+ *  and pairs from the same corridor list the public site uses — this file
+ *  only reshapes it. Nothing is defined twice. */
 export interface CurrencyInfo {
   code: CurrencyCode;
   name: string; // Arabic currency name
   country: string;
   flag: string;
-  decimals: number; // decimals shown for amounts in this currency
+  decimals: number;
 }
 
-export const CURRENCIES: Record<CurrencyCode, CurrencyInfo> = {
-  SDG: { code: "SDG", name: "جنيه سوداني", country: "السودان", flag: "🇸🇩", decimals: 0 },
-  EGP: { code: "EGP", name: "جنيه مصري", country: "مصر", flag: "🇪🇬", decimals: 0 },
-  UGX: { code: "UGX", name: "شلن أوغندي", country: "أوغندا", flag: "🇺🇬", decimals: 0 },
-  RWF: { code: "RWF", name: "فرنك رواندي", country: "رواندا", flag: "🇷🇼", decimals: 0 },
-  KES: { code: "KES", name: "شلن كيني", country: "كينيا", flag: "🇰🇪", decimals: 0 },
-  USDT: { code: "USDT", name: "USDT", country: "تيثر", flag: "₮", decimals: 2 },
-};
+export const CURRENCIES = Object.fromEntries(
+  Object.values(BASE).map((c) => [
+    c.code,
+    {
+      code: c.code,
+      name: c.code === "USDT" ? "USDT" : c.currency,
+      country: c.name,
+      flag: c.flag,
+      decimals: c.code === "USDT" ? 2 : 0,
+    },
+  ])
+) as Record<CurrencyCode, CurrencyInfo>;
 
 export const CURRENCY_LIST = Object.values(CURRENCIES);
 
-/** A pair is quoted the way Master Digital's daily board quotes it:
- *  "`unit` of `base` = X `quote`" (e.g. 100,000 SDG = 47,280 UGX).
- *  Each pair yields TWO independent routes — base→quote and quote→base —
- *  and every route carries its own cost, margin and customer rate. */
+/** A corridor's market price is "X of `a` per 1 `b`". In board terms that is
+ *  base = b, quote = a, unit = 1. */
 export interface Pair {
   base: CurrencyCode;
   quote: CurrencyCode;
   unit: number;
 }
 
-export const PAIRS: Pair[] = [
-  { base: "SDG", quote: "UGX", unit: 100000 },
-  { base: "SDG", quote: "RWF", unit: 100000 },
-  { base: "SDG", quote: "KES", unit: 100000 },
-  { base: "USDT", quote: "SDG", unit: 100 },
-  { base: "EGP", quote: "SDG", unit: 1000 },
-  { base: "EGP", quote: "UGX", unit: 1000 },
-  { base: "EGP", quote: "RWF", unit: 1000 },
-  { base: "EGP", quote: "KES", unit: 1000 },
-  { base: "USDT", quote: "EGP", unit: 100 },
-];
+export const PAIRS: Pair[] = CORRIDORS.map((p) => ({ base: p.b, quote: p.a, unit: 1 }));
 
 export function findPair(x: CurrencyCode, y: CurrencyCode): Pair | undefined {
   return PAIRS.find((p) => (p.base === x && p.quote === y) || (p.base === y && p.quote === x));
@@ -49,10 +46,10 @@ export function routeKey(from: string, to: string) {
   return `${from}_${to}`;
 }
 
-/** Every directed route the business works with (18). */
-export const ROUTE_KEYS: { from: CurrencyCode; to: CurrencyCode }[] = PAIRS.flatMap((p) => [
-  { from: p.base, to: p.quote },
-  { from: p.quote, to: p.base },
+/** Every directed route (two per corridor). */
+export const ROUTE_KEYS: { from: CurrencyCode; to: CurrencyCode }[] = CORRIDORS.flatMap((p) => [
+  { from: p.a, to: p.b },
+  { from: p.b, to: p.a },
 ]);
 
 export function destinationsFor(from: CurrencyCode): CurrencyCode[] {

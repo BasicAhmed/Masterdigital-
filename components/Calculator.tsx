@@ -1,20 +1,25 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
-import { ArrowLeftRight, Ban, Check, ChevronDown } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { ArrowLeft, ArrowLeftRight, Ban, ChevronDown, Share2, Check } from "lucide-react";
 import WhatsAppIcon from "./WhatsAppIcon";
-import { CURRENCIES, CURRENCY_LIST, destinationsFor, findPair, routeKey, type CurrencyCode } from "@/lib/currencies";
-import { perUnit } from "@/lib/calc";
-import { cleanNumber, fmt, fmtMoney, fmtRate, formatTyping } from "@/lib/format";
+import { FROM_CURRENCIES, validToCurrencies, CURRENCIES, isMultiplyCorridor, type CurrencyCode } from "@/lib/corridors";
+import { formatRate } from "@/lib/format";
 import { formatRelativeTime } from "@/lib/relativeTime";
+import { createShareCardBlob } from "@/lib/shareCard";
+import { convertBetween, type RateRow } from "@/lib/rates";
+import { DISCOUNT_THRESHOLD_USDT, DISCOUNT_AMOUNT_USDT } from "@/lib/promotions";
+import { getRateHistory, type RateHistoryPoint } from "@/lib/rateHistory";
 import { buildAvailabilityMessage, buildOrderMessage } from "@/lib/whatsapp";
-import type { Route } from "@/lib/routes";
 import { useContact } from "./ContactContext";
+import RateHistoryChart from "./RateHistoryChart";
 
 type Mode = "send" | "receive";
 
-const QUICK: Record<CurrencyCode, number[]> = {
+// Convenience tap-to-fill amounts, roughly scaled to how students actually
+// send each currency (a few hundred SAR vs hundreds of thousands SDG).
+const QUICK_AMOUNTS: Record<CurrencyCode, number[]> = {
   SDG: [100000, 500000, 1000000],
   EGP: [1000, 5000, 10000],
   UGX: [100000, 500000, 1000000],
@@ -23,35 +28,48 @@ const QUICK: Record<CurrencyCode, number[]> = {
   USDT: [100, 500, 1000],
 };
 
-/** Other sections fire this to preselect a route and jump to the calculator. */
+/** Custom event other sections fire to preselect a pair and jump to the calculator. */
 export const SELECT_PAIR_EVENT = "master:select-pair";
 export type SelectPairDetail = { from?: CurrencyCode; to?: CurrencyCode };
 
-export default function Calculator({ routes }: { routes: Route[] }) {
+/** "100000.5" → "100,000.5" while typing (keeps a trailing dot / decimals as typed). */
+function formatTyping(raw: string) {
+  if (!raw) return "";
+  const [int, dec] = raw.split(".");
+  const intFmt = int ? Number(int).toLocaleString("en-US") : "0";
+  return dec !== undefined ? `${intFmt}.${dec}` : intFmt;
+}
+
+export default function Calculator({ rates, disabledFlows = [] }: { rates: RateRow[]; disabledFlows?: string[] }) {
   const { wa } = useContact();
   const [mode, setMode] = useState<Mode>("send");
-  const [fromCode, setFromCode] = useState<CurrencyCode>("SDG");
-  const [toCode, setToCode] = useState<CurrencyCode>("UGX");
+  const [fromCode, setFromCode] = useState<CurrencyCode>(FROM_CURRENCIES[0].code);
+  const toOptions = useMemo(() => validToCurrencies(fromCode), [fromCode]);
+  const [toCode, setToCode] = useState<CurrencyCode>(toOptions[0]?.code);
   const [amount, setAmount] = useState("100000");
-  const [swaps, setSwaps] = useState(0);
+  const [swapCount, setSwapCount] = useState(0);
+  const [showHistory, setShowHistory] = useState(false);
+  const [shared, setShared] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
-  const toOptions = useMemo(() => destinationsFor(fromCode), [fromCode]);
-  const to = toOptions.includes(toCode) ? toCode : toOptions[0];
-  const route = routes.find((r) => r.id === routeKey(fromCode, to));
-  const pair = findPair(fromCode, to)!;
-  const from = CURRENCIES[fromCode];
-  const toCur = CURRENCIES[to];
-  const unavailable = !route || !route.active;
+  const currentToOptions = useMemo(() => validToCurrencies(fromCode), [fromCode]);
+  const toCurrency = currentToOptions.find((c) => c.code === toCode) ?? currentToOptions[0];
+  const fromCurrency = CURRENCIES[fromCode];
 
+  const rate = rates.find((r) => r.from === fromCode && r.to === toCurrency?.code);
+
+  const involvesSudan = fromCode === "SDG" || toCurrency?.code === "SDG";
+  const isOff = (from: CurrencyCode, to: CurrencyCode) => disabledFlows.includes(`${from}_${to}`);
+  const unavailable = !!toCurrency && isOff(fromCode, toCurrency.code);
+
+  // Let the hero chips / rates table preselect a pair and scroll here.
   useEffect(() => {
     const onSelect = (e: Event) => {
-      const d = (e as CustomEvent<SelectPairDetail>).detail ?? {};
-      if (d.from) {
-        setFromCode(d.from);
-        const opts = destinationsFor(d.from);
-        setToCode(d.to && opts.includes(d.to) ? d.to : opts[0]);
-        setMode("send");
-        setAmount(String(QUICK[d.from][0]));
+      const { from, to } = (e as CustomEvent<SelectPairDetail>).detail ?? {};
+      if (from) {
+        setFromCode(from);
+        const options = validToCurrencies(from);
+        setToCode(to && options.some((c) => c.code === to) ? to : options[0]?.code);
       }
       document.getElementById("calculator")?.scrollIntoView({ behavior: "smooth", block: "start" });
     };
@@ -59,40 +77,196 @@ export default function Calculator({ routes }: { routes: Route[] }) {
     return () => window.removeEventListener(SELECT_PAIR_EVENT, onSelect);
   }, []);
 
-  const n = parseFloat(amount) || 0;
-  const r = route ? perUnit(fromCode, to, route.rate) : 0;
-  const sent = mode === "send" ? n : r ? n / r : 0;
-  const received = mode === "receive" ? n : n * r;
-  const active = mode === "send" ? from : toCur;
-  const rateLine = route ? `${fmt(pair.unit)} ${pair.base} = ${fmtRate(route.rate)} ${pair.quote}` : "";
+  const [history, setHistory] = useState<RateHistoryPoint[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  useEffect(() => {
+    if (!toCurrency) return;
+    let cancelled = false;
+    setHistoryLoading(true);
+    getRateHistory(fromCode, toCurrency.code, 30).then((points) => {
+      if (!cancelled) {
+        setHistory(points);
+        setHistoryLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [fromCode, toCurrency]);
 
-  function swap() {
-    setFromCode(to);
-    setToCode(fromCode);
-    setSwaps((x) => x + 1);
+  const amountNum = parseFloat(amount) || 0;
+
+  // Each pair has one market price; whichever side is the "b→a" leg of the
+  // pair multiplies instead of dividing (see lib/corridors.ts + lib/rates.ts).
+  const usesMultiply = toCurrency ? isMultiplyCorridor(fromCode, toCurrency.code) : false;
+
+  // Compares the last two history points for this pair's market price.
+  // Fixed convention regardless of direction: price went up = red (زيادة),
+  // price went down = green (انخفاض) — same as the rest of the site's
+  // trend colors.
+  const trend = useMemo<"up" | "down" | null>(() => {
+    if (history.length < 2) return null;
+    const prev = history[history.length - 2].marketPrice;
+    const latest = history[history.length - 1].marketPrice;
+    if (prev === latest) return null;
+    return latest > prev ? "up" : "down";
+  }, [history]);
+
+  // "send" mode: student knows what they're sending (fromCurrency amount).
+  // "receive" mode: student knows what they need the recipient to get (toCurrency amount).
+  const amountSent =
+    mode === "send"
+      ? amountNum
+      : rate
+      ? usesMultiply
+        ? amountNum / rate.rate
+        : amountNum * rate.rate
+      : 0;
+  const amountReceived =
+    mode === "receive"
+      ? amountNum
+      : rate
+      ? usesMultiply
+        ? amountNum * rate.rate
+        : amountNum / rate.rate
+      : 0;
+
+  const activeCurrency = mode === "send" ? fromCurrency : toCurrency;
+  const quickAmounts = activeCurrency ? QUICK_AMOUNTS[activeCurrency.code] : [];
+
+  // Volume discount: send amount worth ≥1500 USDT gets a flat 15 USDT bonus,
+  // added on top of what they'd normally receive.
+  const usdtEquivalent = amountSent > 0 ? convertBetween(amountSent, fromCode, "USDT", rates) : null;
+  const discountApplies = usdtEquivalent !== null && usdtEquivalent >= DISCOUNT_THRESHOLD_USDT;
+  const discountBonus =
+    discountApplies && toCurrency ? convertBetween(DISCOUNT_AMOUNT_USDT, "USDT", toCurrency.code, rates) ?? 0 : 0;
+  const finalAmountReceived = amountReceived + discountBonus;
+
+  function handleFromChange(code: CurrencyCode) {
+    setFromCode(code);
+    const next = validToCurrencies(code);
+    setToCode(next[0]?.code);
   }
 
-  function order() {
+  function swapCurrencies() {
+    if (!toCurrency) return;
+    const newFrom = toCurrency.code;
+    const newTo = fromCode;
+    setFromCode(newFrom);
+    setToCode(newTo);
+    setSwapCount((n) => n + 1);
+  }
+
+  function orderNow() {
+    if (!toCurrency) return;
     if (unavailable) {
-      window.open(wa(buildAvailabilityMessage(from.name, toCur.name)), "_blank", "noopener,noreferrer");
+      window.open(
+        wa(buildAvailabilityMessage(fromCode, toCurrency.code, fromCurrency.currency, toCurrency.currency)),
+        "_blank",
+        "noopener,noreferrer"
+      );
       return;
     }
-    window.open(
-      wa(
-        buildOrderMessage({
-          amountSent: fmtMoney(sent, fromCode),
-          fromCode,
-          fromName: from.name,
-          amountReceived: fmtMoney(received, to),
-          toCode: to,
-          toName: toCur.name,
-          rateLine,
-        })
-      ),
-      "_blank",
-      "noopener,noreferrer"
-    );
+    if (!rate) return;
+    const message = buildOrderMessage({
+      amountReceived: finalAmountReceived.toLocaleString("en-US", { maximumFractionDigits: 2 }),
+      toCurrency: toCurrency.code,
+      toName: toCurrency.currency,
+      amountSent: amountSent.toLocaleString("en-US", { maximumFractionDigits: 2 }),
+      fromCurrency: fromCurrency.code,
+      fromName: fromCurrency.currency,
+      rateLine: rateText,
+      discountNote: discountApplies
+        ? `مؤهل لخصم ${DISCOUNT_AMOUNT_USDT} USDT (التحويل أكتر من ${DISCOUNT_THRESHOLD_USDT} USDT)`
+        : undefined,
+    });
+    window.open(wa(message), "_blank", "noopener,noreferrer");
   }
+
+  async function shareResult() {
+    if (!rate || !toCurrency) return;
+    setSharing(true);
+    try {
+      const rateLine = usesMultiply
+        ? `1 ${fromCurrency.code} = ${formatRate(rate.rate)} ${toCurrency.code}`
+        : `1 ${toCurrency.code} = ${formatRate(rate.rate)} ${fromCurrency.code}`;
+      const trendLabel = trend === "up" ? "▲ زيادة" : trend === "down" ? "▼ انخفاض" : undefined;
+      const updatedCaption = rate.updatedAt
+        ? `آخر تحديث للسعر: ${formatRelativeTime(rate.updatedAt)}`
+        : undefined;
+
+      const blob = await createShareCardBlob({
+        fromFlag: fromCurrency.flag,
+        fromCode: fromCurrency.code,
+        toFlag: toCurrency.flag,
+        toCode: toCurrency.code,
+        amountSent: amountSent.toLocaleString("en-US", { maximumFractionDigits: 2 }),
+        amountReceived: finalAmountReceived.toLocaleString("en-US", { maximumFractionDigits: 2 }),
+        rateLine,
+        trendLabel,
+        // shareCard's "good" slot renders emerald, "bad" renders red — up=red, down=green here.
+        trendColor: trend === "up" ? "bad" : trend === "down" ? "good" : "neutral",
+        updatedCaption,
+        history,
+      });
+
+      if (!blob) throw new Error("canvas unsupported");
+
+      const file = new File([blob], "master-digital-quote.png", { type: "image/png" });
+
+      if (navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: "Master Digital" });
+        } catch {
+          // user cancelled the share sheet — no-op
+        }
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "master-digital-quote.png";
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+        setShared(true);
+        setTimeout(() => setShared(false), 1800);
+      }
+    } catch {
+      // canvas/share unavailable — fall back to a plain text share/copy
+      const text = [
+        `Master Digital — ${fromCurrency.code} ⇄ ${toCurrency.code}`,
+        `${amountSent.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${fromCurrency.code} = ${finalAmountReceived.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${toCurrency.code}`,
+      ].join("\n");
+      if (navigator.share) {
+        try {
+          await navigator.share({ text });
+        } catch {
+          // user cancelled — no-op
+        }
+      } else {
+        try {
+          await navigator.clipboard.writeText(text);
+          setShared(true);
+          setTimeout(() => setShared(false), 1800);
+        } catch {
+          // clipboard unavailable — nothing more we can do
+        }
+      }
+    }
+    setSharing(false);
+  }
+
+  const rateText =
+    rate && toCurrency
+      ? usesMultiply
+        ? `1 ${fromCurrency.code} = ${formatRate(rate.rate)} ${toCurrency.code}`
+        : `1 ${toCurrency.code} = ${formatRate(rate.rate)} ${fromCurrency.code}`
+      : "";
+  const trendTone =
+    trend === "up"
+      ? { box: "border-red-500/30 bg-red-500/10", dot: "bg-red-500", text: "text-red-500" }
+      : trend === "down"
+      ? { box: "border-emerald-500/30 bg-emerald-500/10", dot: "bg-emerald-500", text: "text-emerald-500" }
+      : { box: "border-primary/25 bg-primary/10", dot: "bg-primary", text: "text-primary" };
 
   return (
     <section id="calculator" className="relative border-t border-border/60 py-16 sm:py-24">
@@ -100,25 +274,33 @@ export default function Calculator({ routes }: { routes: Route[] }) {
         <div className="grid gap-10 lg:grid-cols-[1fr_1.15fr] lg:items-center">
           <div>
             <p className="eyebrow">الحاسبة</p>
-            <h2 className="section-heading mt-3">احسب تحويلك قبل ما تطلب</h2>
-            <p className="mt-3 max-w-md text-muted">اختار العملتين والمبلغ، وشوف المستلم حيستلم كم بسعر اليوم.</p>
+            <h2 className="section-heading mt-3">احسبها صاح</h2>
+            <p className="mt-3 max-w-md text-muted">
+              شوف انت عاوز كم و حتحول كم باسهل طريقه و اطلب الان.
+            </p>
             <ul className="mt-6 hidden space-y-3 lg:block">
-              {["سعر مختلف لكل اتجاه — زي جدول الأسعار بالضبط", "رسوم التحويل إن وُجدت تتوضح ليك قبل التنفيذ", "الطلب يفتح على واتساب وتفاصيلك جاهزة"].map((t) => (
-                <li key={t} className="flex items-center gap-3 text-sm text-ink">
-                  <span className="flex size-6 items-center justify-center rounded-full bg-primary/10 text-primary shadow-soft">
-                    <Check size={13} />
-                  </span>
-                  {t}
-                </li>
-              ))}
+              {["السعر اللي تشوفه هو اللي يُطبّق", "بدون رسوم مخفية", "الطلب يفتح على واتساب وتفاصيلك جاهزة"].map(
+                (t) => (
+                  <li key={t} className="flex items-center gap-3 text-sm text-ink">
+                    <span className="flex size-6 items-center justify-center rounded-full bg-primary/10 text-primary shadow-soft">
+                      <Check size={13} />
+                    </span>
+                    {t}
+                  </li>
+                )
+              )}
             </ul>
           </div>
 
           <div className="relative">
-            <div aria-hidden="true" className="absolute -inset-4 -z-10 rounded-[2.5rem] bg-brand-gradient opacity-15 blur-3xl" />
+            <div
+              aria-hidden="true"
+              className="absolute -inset-4 -z-10 rounded-[2.5rem] bg-brand-gradient opacity-20 blur-3xl"
+            />
             <div className="card relative overflow-hidden p-4 shadow-lift sm:p-6">
-              <div aria-hidden="true" className="absolute inset-x-0 top-0 h-1 bg-brand-gradient" />
+              <div aria-hidden="true" className="absolute inset-x-0 top-0 h-px bg-brand-gradient opacity-70" />
 
+              {/* Mode toggle */}
               <div className="mb-5 grid grid-cols-2 gap-1 rounded-2xl border border-border/70 bg-surface2 p-1 shadow-well">
                 {(
                   [
@@ -126,7 +308,11 @@ export default function Calculator({ routes }: { routes: Route[] }) {
                     ["receive", "عاوز يوصل مبلغ"],
                   ] as const
                 ).map(([value, text]) => (
-                  <button key={value} onClick={() => setMode(value)} className="relative rounded-xl py-2.5 text-sm font-semibold">
+                  <button
+                    key={value}
+                    onClick={() => setMode(value)}
+                    className="relative rounded-xl py-2.5 text-sm font-semibold transition-colors"
+                  >
                     {mode === value && (
                       <motion.span
                         layoutId="mode-pill"
@@ -139,11 +325,12 @@ export default function Calculator({ routes }: { routes: Route[] }) {
                 ))}
               </div>
 
+              {/* Currency pickers */}
               <div className="relative grid grid-cols-2 gap-2.5">
                 {(
                   [
-                    ["من", from, fromCode, CURRENCY_LIST.map((c) => c.code), (v: CurrencyCode) => { setFromCode(v); setToCode(destinationsFor(v)[0]); }],
-                    ["إلى", toCur, to, toOptions, (v: CurrencyCode) => setToCode(v)],
+                    ["من", fromCurrency, fromCode, FROM_CURRENCIES, (v: CurrencyCode) => handleFromChange(v)],
+                    ["إلى", toCurrency, toCurrency?.code, currentToOptions, (v: CurrencyCode) => setToCode(v)],
                   ] as const
                 ).map(([label, cur, value, options, onChange]) => (
                   <label
@@ -152,10 +339,10 @@ export default function Calculator({ routes }: { routes: Route[] }) {
                   >
                     <span className="block text-[11px] font-medium text-subtle">{label}</span>
                     <span className="mt-1 flex items-center gap-2">
-                      <span className="text-2xl leading-none">{cur.flag}</span>
+                      <span className="text-2xl leading-none">{cur?.flag}</span>
                       <span className="min-w-0">
-                        <span className="block font-mono text-base font-bold text-ink">{cur.code}</span>
-                        <span className="block truncate text-[11px] text-muted">{cur.name}</span>
+                        <span className="block font-mono text-base font-bold text-ink">{cur?.code}</span>
+                        <span className="block truncate text-[11px] text-muted">{cur?.name}</span>
                       </span>
                       <ChevronDown size={14} className="mr-auto shrink-0 text-subtle" />
                     </span>
@@ -165,28 +352,40 @@ export default function Calculator({ routes }: { routes: Route[] }) {
                       aria-label={`${label} عملة`}
                       className="absolute inset-0 cursor-pointer opacity-0"
                     >
-                      {options.map((c) => (
-                        <option key={c} value={c}>
-                          {CURRENCIES[c].name} ({c})
-                        </option>
-                      ))}
+                      {options.map((c) => {
+                        const off =
+                          label === "من"
+                            ? validToCurrencies(c.code).every((t) => isOff(c.code, t.code))
+                            : isOff(fromCode, c.code);
+                        return (
+                          <option key={c.code} value={c.code}>
+                            {c.name} ({c.code}){off ? " — غير متاح حالياً" : ""}
+                          </option>
+                        );
+                      })}
                     </select>
                   </label>
                 ))}
+
                 <motion.button
-                  onClick={swap}
-                  animate={{ rotate: swaps * 180 }}
+                  onClick={swapCurrencies}
+                  animate={{ rotate: swapCount * 180 }}
                   whileTap={{ scale: 0.85 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
                   aria-label="بدّل العملتين"
+                  title="بدّل العملتين"
                   className="absolute left-1/2 top-1/2 z-10 flex size-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-4 border-surface bg-primary text-bg shadow-glow"
                 >
                   <ArrowLeftRight size={15} />
                 </motion.button>
               </div>
 
+              {/* Amount */}
               <label className="mt-4 block">
-                <span className="label">
-                  {mode === "send" ? `المبلغ اللي حترسله (${fromCode})` : `المبلغ اللي عاوزه يوصل (${to})`}
+                <span className="mb-1.5 block text-xs font-medium text-subtle">
+                  {mode === "send"
+                    ? `المبلغ اللي حترسله (${fromCurrency.code})`
+                    : `المبلغ اللي عاوزه يوصل (${toCurrency?.code})`}
                 </span>
                 <div className="relative">
                   <input
@@ -194,67 +393,209 @@ export default function Calculator({ routes }: { routes: Route[] }) {
                     inputMode="decimal"
                     autoComplete="off"
                     value={formatTyping(amount)}
-                    onChange={(e) => setAmount(cleanNumber(e.target.value, 2))}
+                    onChange={(e) => {
+                      const clean = e.target.value.replace(/[^0-9.]/g, "");
+                      const [int, ...rest] = clean.split(".");
+                      const next = rest.length ? `${int}.${rest.join("").slice(0, 2)}` : int;
+                      setAmount(next.replace(/^0+(?=\d)/, ""));
+                    }}
                     onFocus={(e) => e.currentTarget.select()}
                     aria-label="المبلغ"
                     dir="ltr"
                     className="field py-3.5 pl-4 pr-20 text-left font-mono text-2xl font-bold"
                   />
                   <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center font-mono text-sm font-semibold text-subtle">
-                    {active.code}
+                    {activeCurrency?.code}
                   </span>
                 </div>
               </label>
 
-              <div className="mt-2.5 grid grid-cols-3 gap-2" dir="ltr">
-                {QUICK[active.code].map((q) => (
-                  <button
-                    key={q}
-                    onClick={() => setAmount(String(q))}
-                    className={`rounded-xl border py-1.5 font-mono text-xs font-semibold shadow-soft transition-all ${
-                      n === q ? "border-primary bg-primary/10 text-primary" : "border-border/70 bg-surface text-muted hover:border-primary/60 hover:text-primary"
-                    }`}
-                  >
-                    {fmt(q)}
-                  </button>
-                ))}
-              </div>
-
-              {unavailable && (
-                <div role="status" className="mt-4 flex items-start gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 p-3.5 text-sm text-ink">
-                  <span className="mt-0.5 rounded-full bg-red-500/15 p-1.5 text-red-500">
-                    <Ban size={14} />
-                  </span>
-                  <div>
-                    <p className="font-semibold">
-                      التحويل من {from.name} إلى {toCur.name} غير متاح حالياً
-                    </p>
-                    <p className="mt-0.5 text-xs leading-relaxed text-muted">راسلنا عشان نبلغك أول ما يتوفر.</p>
-                  </div>
+              {quickAmounts.length > 0 && (
+                <div className="mt-2.5 grid grid-cols-3 gap-2" dir="ltr">
+                  {quickAmounts.map((q) => (
+                    <button
+                      key={q}
+                      onClick={() => setAmount(String(q))}
+                      className={`rounded-xl border py-1.5 font-mono text-xs font-semibold transition-all ${
+                        amountNum === q
+                          ? "border-primary bg-primary/10 text-primary shadow-soft"
+                          : "border-border/70 bg-surface text-muted shadow-soft hover:border-primary/60 hover:text-primary"
+                      }`}
+                    >
+                      {q.toLocaleString("en-US")}
+                    </button>
+                  ))}
                 </div>
               )}
 
-              <div className={`relative mt-4 overflow-hidden rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/15 via-primary/5 to-accent/10 p-5 text-center shadow-well ${unavailable ? "opacity-50" : ""}`}>
-                <p className="text-xs font-medium text-muted">{mode === "send" ? "المستلم يستلم" : "حترسل"}</p>
-                <p className="mt-1 font-mono text-[clamp(1.6rem,7vw,2.5rem)] font-bold leading-tight text-ink" dir="ltr">
-                  {fmtMoney(mode === "send" ? received : sent, mode === "send" ? to : fromCode)}{" "}
-                  <span className="text-base text-primary">{mode === "send" ? to : fromCode}</span>
+              <AnimatePresence initial={false}>
+                {unavailable && toCurrency && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div
+                      role="status"
+                      className="mt-4 flex items-start gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 p-3.5 text-sm text-ink"
+                    >
+                      <span className="mt-0.5 rounded-full bg-red-500/15 p-1.5 text-red-500">
+                        <Ban size={14} />
+                      </span>
+                      <div>
+                        <p className="font-semibold">
+                          التحويل من {fromCurrency.currency} إلى {toCurrency.currency} غير متاح حالياً
+                        </p>
+                        <p className="mt-0.5 text-xs leading-relaxed text-muted">
+                          تقدر تشوف السعر التقريبي، لكن الطلب موقوف مؤقتاً. راسلنا عشان نبلغك أول ما يتوفر.
+                        </p>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Result */}
+              <div className={`relative mt-4 overflow-hidden rounded-2xl border border-primary/25 transition-opacity ${unavailable ? "opacity-60" : ""} bg-gradient-to-br from-primary/15 via-primary/5 to-accent/10 p-5 text-center shadow-well`}>
+                <div className="flex items-center justify-center gap-2">
+                  <p className="text-xs font-medium text-muted">المستلم يستلم</p>
+                  {rate && (
+                    <button
+                      onClick={shareResult}
+                      disabled={sharing}
+                      aria-label="مشاركة النتيجة كصورة"
+                      title="مشاركة النتيجة كصورة"
+                      className="rounded-full p-1 text-subtle transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-50"
+                    >
+                      {sharing ? (
+                        <motion.span
+                          animate={{ rotate: 360 }}
+                          transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
+                          className="block"
+                        >
+                          <Share2 size={13} />
+                        </motion.span>
+                      ) : shared ? (
+                        <Check size={13} className="text-primary" />
+                      ) : (
+                        <Share2 size={13} />
+                      )}
+                    </button>
+                  )}
+                </div>
+                <AnimatePresence mode="wait">
+                  <motion.p
+                    key={`${finalAmountReceived}-${toCurrency?.code}`}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="mt-1 break-all font-mono text-3xl font-extrabold text-ink sm:text-4xl"
+                    dir="ltr"
+                  >
+                    {rate ? (
+                      <>
+                        {finalAmountReceived.toLocaleString("en-US", { maximumFractionDigits: 2 })}{" "}
+                        <span className="text-gradient">{toCurrency.code}</span>
+                      </>
+                    ) : (
+                      "اختر ممر التحويل"
+                    )}
+                  </motion.p>
+                </AnimatePresence>
+                <p className="mt-1 text-sm text-muted">
+                  مقابل{" "}
+                  <span className="font-mono" dir="ltr">
+                    {amountSent.toLocaleString("en-US", { maximumFractionDigits: 2 })} {fromCurrency.code}
+                  </span>
                 </p>
-                {route && (
-                  <p className="mt-2 text-xs text-muted">
-                    السعر:{" "}
-                    <span className="font-mono font-semibold text-ink" dir="ltr">
-                      {rateLine}
-                    </span>
-                    {route.updatedAt && <span className="text-subtle"> · {formatRelativeTime(route.updatedAt)}</span>}
+                {discountApplies && (
+                  <p className="mt-2 inline-block rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-500">
+                    🎉 خصم {DISCOUNT_AMOUNT_USDT} USDT مضاف — تحويل أكتر من {DISCOUNT_THRESHOLD_USDT} USDT
                   </p>
+                )}
+
+                {rate && toCurrency && (
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={`${fromCode}-${toCurrency.code}-${trend ?? "flat"}`}
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.25 }}
+                      className={`mx-auto mt-4 flex w-fit items-center gap-2 rounded-full border px-3 py-1.5 ${trendTone.box}`}
+                    >
+                      <span className="relative flex size-2">
+                        <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${trendTone.dot}`} />
+                        <span className={`relative inline-flex size-2 rounded-full ${trendTone.dot}`} />
+                      </span>
+                      <span className={`font-mono text-xs font-bold ${trendTone.text}`} dir="ltr">
+                        {rateText}
+                      </span>
+                      {trend && (
+                        <span className={`text-[11px] ${trendTone.text}`}>
+                          {trend === "up" ? "▲ زيادة" : "▼ انخفاض"}
+                        </span>
+                      )}
+                    </motion.div>
+                  </AnimatePresence>
+                )}
+                {rate?.updatedAt && (
+                  <p className="mt-1.5 text-[11px] text-subtle">آخر تحديث للسعر: {formatRelativeTime(rate.updatedAt)}</p>
                 )}
               </div>
 
-              <button onClick={order} disabled={!n} className="btn-whatsapp mt-4 w-full py-4 text-base">
-                <WhatsAppIcon size={20} /> {unavailable ? "اسأل عن التوفر" : "اطلب الآن عبر واتساب"}
-              </button>
-              <p className="mt-3 text-center text-[11px] text-subtle">يتم خصم رسوم التحويل إن وُجدت من المبلغ المستلم.</p>
+              {involvesSudan && (
+                <div
+                  className="mt-3 flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed text-ink"
+                  role="alert"
+                >
+                  <span aria-hidden="true">⚠️</span>
+                  <p>
+                    سعر الجنيه السوداني بيتقلب بشكل كبير الفترة دي — تأكد من السعر مع الإدارة قبل ما تأكد الطلب.
+                  </p>
+                </div>
+              )}
+
+              {toCurrency && (
+                <div className="mt-2">
+                  <button
+                    onClick={() => setShowHistory((v) => !v)}
+                    className="flex w-full items-center justify-center gap-1.5 py-2 text-xs font-medium text-subtle transition-colors hover:text-primary"
+                  >
+                    {showHistory ? "إخفاء سعر آخر 30 يوم" : "عرض سعر آخر 30 يوم"}
+                    <motion.span animate={{ rotate: showHistory ? 180 : 0 }} transition={{ duration: 0.2 }}>
+                      <ChevronDown size={14} />
+                    </motion.span>
+                  </button>
+                  <AnimatePresence initial={false}>
+                    {showHistory && !historyLoading && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.25 }}
+                        className="overflow-hidden"
+                      >
+                        <RateHistoryChart points={history} label={`${fromCurrency.code} ⇄ ${toCurrency.code}`} />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
+
+              <motion.button
+                onClick={orderNow}
+                disabled={!unavailable && (!rate || amountNum <= 0)}
+                whileTap={{ scale: 0.98 }}
+                className="btn-whatsapp mt-2 w-full py-4 text-base"
+              >
+                <WhatsAppIcon size={20} />
+                {unavailable ? "اسأل عن التوفّر عبر واتساب" : "اطلب الآن عبر واتساب"}
+                <ArrowLeft size={16} />
+              </motion.button>
+              <p className="mt-2 text-center text-[11px] text-subtle">
+                يفتح واتساب ورسالتك جاهزة بكل التفاصيل — ما عليك إلا ترسلها.
+              </p>
             </div>
           </div>
         </div>

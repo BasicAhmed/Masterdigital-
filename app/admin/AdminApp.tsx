@@ -5,7 +5,9 @@ import { ArrowLeftRight, LayoutDashboard, LogOut, Phone, Plus, RefreshCw, Trendi
 import Brand from "@/components/Brand";
 import ThemeToggle from "@/components/ThemeToggle";
 import { demoMode } from "@/lib/store";
-import { getRoutes, type Route } from "@/lib/routes";
+import { routesFromRates, type Route } from "@/lib/routes";
+import { getRatesWithMargin, type RateRow } from "@/lib/rates";
+import { getDisabledFlows } from "@/lib/settings";
 import {
   deleteCustomer,
   deleteTransaction,
@@ -37,7 +39,6 @@ export interface AdminData {
   routes: Route[];
   customers: Customer[];
   txs: Transaction[];
-  setRoutes: (r: Route[]) => void;
   upsertCustomer: (c: Customer) => Promise<Customer>;
   removeCustomer: (id: string) => Promise<void>;
   upsertTx: (t: Transaction) => Promise<void>;
@@ -49,16 +50,22 @@ export interface AdminData {
 export default function AdminApp({ onSignOut, userEmail }: { onSignOut?: () => void; userEmail?: string }) {
   const [tab, setTab] = useState<Tab>("finance");
   const [loaded, setLoaded] = useState(false);
-  const [routes, setRoutes] = useState<Route[]>([]);
+  // Rates come from the same source as the public site (market price + per-direction margin).
+  const [rates, setRates] = useState<RateRow[]>([]);
+  const [margin, setMargin] = useState(2.5);
+  const [disabled, setDisabled] = useState<string[]>([]);
+  const routes = useMemo<Route[]>(() => routesFromRates(rates, disabled), [rates, disabled]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [txs, setTxs] = useState<Transaction[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<{ customerId?: string; edit?: Transaction } | null>(null);
 
   useEffect(() => {
-    Promise.all([getRoutes(), getCustomers(), getTransactions()])
-      .then(([r, c, t]) => {
-        setRoutes(r);
+    Promise.all([getRatesWithMargin(), getDisabledFlows(), getCustomers(), getTransactions()])
+      .then(([r, flows, c, t]) => {
+        setRates(r.rates);
+        setMargin(r.defaultMargin);
+        setDisabled(flows);
         setCustomers(c);
         setTxs(t);
       })
@@ -81,7 +88,6 @@ export default function AdminApp({ onSignOut, userEmail }: { onSignOut?: () => v
       routes,
       customers,
       txs,
-      setRoutes,
       onError: setError,
       openTxForm: (opts) => setForm(opts ?? {}),
       upsertCustomer: (c) =>
@@ -183,7 +189,7 @@ export default function AdminApp({ onSignOut, userEmail }: { onSignOut?: () => v
         ) : tab === "customers" ? (
           <CustomersTab data={data} />
         ) : tab === "rates" ? (
-          <RatesTab data={data} />
+          <RatesTab state={{ rates, setRates, margin, setMargin, disabled, setDisabled }} onError={setError} />
         ) : (
           <div className="mx-auto max-w-2xl">
             <ContactTab onError={setError} />

@@ -1,8 +1,12 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Public: the site shows rates and contact details to everyone.
-    match /routes/{route} {
+    // Public: the site shows rates, rate history and contact details to everyone.
+    match /rates/{corridor} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    match /rateHistory/{corridor} {
       allow read: if true;
       allow write: if request.auth != null;
     }

@@ -1,0 +1,14 @@
+{
+  "note": "STARTING MARKET PRICES taken from the midpoint of Master Digital's buy/sell sheet — tap 'تحديث الآن' in /admin to load live prices. Each pair has ONE market price, quoted as units of the first currency per 1 unit of the second (e.g. SDG/USDT = 8230 means 8230 SDG = 1 USDT). Both directions are derived from it, each with its own margin set in /admin.",
+  "rates": [
+    { "from": "SDG", "to": "UGX", "marketPrice": 2.057 },
+    { "from": "SDG", "to": "RWF", "marketPrice": 5.4855 },
+    { "from": "SDG", "to": "KES", "marketPrice": 63.4921 },
+    { "from": "SDG", "to": "USDT", "marketPrice": 8230 },
+    { "from": "SDG", "to": "EGP", "marketPrice": 156.085 },
+    { "from": "UGX", "to": "EGP", "marketPrice": 75.68 },
+    { "from": "RWF", "to": "EGP", "marketPrice": 28.38 },
+    { "from": "KES", "to": "EGP", "marketPrice": 2.455 },
+    { "from": "EGP", "to": "USDT", "marketPrice": 52.9 }
+  ]
+}

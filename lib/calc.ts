@@ -27,15 +27,16 @@ export function perUnit(from: CurrencyCode, to: CurrencyCode, quoted: number): n
 export function marginOf(from: CurrencyCode, to: CurrencyCode, cost: number, rate: number): number {
   const c = perUnit(from, to, cost);
   const r = perUnit(from, to, rate);
-  if (!c) return 0;
-  return ((c - r) / c) * 100;
+  if (!c || !r) return 0;
+  // Same definition the rates screen uses: market × (1 − m) one way, market × (1 + m) the other.
+  return (isForward(from, to) ? (c - r) / c : (c - r) / r) * 100;
 }
 
 /** Customer rate that earns `marginPercent` over `cost`, for this direction. */
 export function rateFromMargin(from: CurrencyCode, to: CurrencyCode, cost: number, marginPercent: number): number {
   const m = marginPercent / 100;
   // forward: payout shrinks → quoted rate goes down. reverse: customer pays more → quoted rate goes up.
-  return isForward(from, to) ? cost * (1 - m) : m >= 1 ? 0 : cost / (1 - m);
+  return isForward(from, to) ? cost * (1 - m) : cost * (1 + m);
 }
 
 /** Rounds to 4 significant figures — board-style numbers (47,280 not 47,278.13). */
@@ -100,7 +101,7 @@ export function computeTx(i: TxInput): TxResult {
     payout,
     customerPays,
     spread,
-    marginPercent: c ? ((c - r) / c) * 100 : 0,
+    marginPercent: marginOf(i.from, i.to, i.cost, i.rate),
     volumeUsd,
     spreadUsd,
     feeUsd,

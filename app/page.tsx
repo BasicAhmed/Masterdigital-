@@ -1,10 +1,11 @@
-import { getRoutes } from "@/lib/routes";
-import { getContactSettings } from "@/lib/settings";
+import { getRates } from "@/lib/rates";
+import { getContactSettings, getDisabledFlows } from "@/lib/settings";
 import { ContactProvider } from "@/components/ContactContext";
 import WhatsAppFab from "@/components/WhatsAppFab";
 import Nav from "@/components/Nav";
 import Hero from "@/components/Hero";
-import RatesBoard from "@/components/RatesBoard";
+import RateTicker from "@/components/RateTicker";
+import RatesTable from "@/components/RatesTable";
 import Calculator from "@/components/Calculator";
 import WhyChoose from "@/components/WhyChoose";
 import HowItWorks from "@/components/HowItWorks";
@@ -15,14 +16,15 @@ import Footer from "@/components/Footer";
 export const revalidate = 60; // re-fetch rates at most once a minute
 
 export default async function Home() {
-  const [routes, contact] = await Promise.all([getRoutes(), getContactSettings()]);
+  const [rates, disabledFlows, contact] = await Promise.all([getRates(), getDisabledFlows(), getContactSettings()]);
 
   return (
     <ContactProvider value={contact}>
       <Nav />
       <Hero />
-      <RatesBoard routes={routes} />
-      <Calculator routes={routes} />
+      <Calculator rates={rates} disabledFlows={disabledFlows} />
+      <RateTicker rates={rates} disabledFlows={disabledFlows} />
+      <RatesTable rates={rates} disabledFlows={disabledFlows} />
       <WhyChoose />
       <HowItWorks />
       <FAQ />
