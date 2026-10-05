@@ -1,0 +1,114 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  /* Light theme (default) — Master Digital royal blue / navy / gold on white */
+  --color-bg: 244 247 252;
+  --color-surface: 255 255 255;
+  --color-surface2: 235 241 250;
+  --color-border: 214 224 240;
+  --color-ink: 7 25 66;
+  --color-muted: 66 84 122;
+  --color-subtle: 122 138 170;
+  --color-primary: 27 76 153;
+  --color-accent: 160 122 20;
+  --shadow-rgb: 14 40 96;
+  --highlight-rgb: 255 255 255;
+}
+
+.dark {
+  color-scheme: dark;
+  --color-bg: 4 13 36;
+  --color-surface: 9 23 56;
+  --color-surface2: 14 32 72;
+  --color-border: 30 52 100;
+  --color-ink: 236 242 255;
+  --color-muted: 150 168 204;
+  --color-subtle: 104 124 166;
+  --color-primary: 98 150 236;
+  --color-accent: 222 184 96;
+  --shadow-rgb: 0 4 18;
+  --highlight-rgb: 255 255 255;
+}
+
+* {
+  scroll-behavior: smooth;
+}
+
+/* Keep section headings clear of the sticky nav when jumping via links. */
+section[id] {
+  scroll-margin-top: 64px;
+}
+
+::selection {
+  background: rgb(var(--color-primary));
+  color: rgb(var(--color-bg));
+}
+
+:focus-visible {
+  outline: 2px solid rgb(var(--color-primary));
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.container-page {
+  @apply mx-auto w-full max-w-6xl px-5 sm:px-8;
+}
+
+.eyebrow {
+  @apply text-xs font-semibold text-primary;
+}
+
+.section-heading {
+  @apply font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl;
+}
+
+/* The 3D shield logo always sits on a white tile so it reads in both themes */
+.logo-tile {
+  @apply rounded-xl bg-white p-0.5 shadow-soft ring-1 ring-black/5;
+}
+.label {
+  @apply mb-1.5 block text-xs font-medium text-subtle;
+}
+.chip {
+  @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold;
+}
+.num {
+  @apply font-mono tabular-nums;
+}
+
+/* ---------- Shared surfaces & controls ---------- */
+.card {
+  @apply rounded-3xl border border-border/70 bg-surface shadow-card;
+}
+.card-sm {
+  @apply rounded-2xl border border-border/70 bg-surface shadow-soft;
+}
+.field {
+  @apply w-full rounded-xl border border-border bg-surface2 text-ink shadow-well outline-none transition-colors placeholder:text-subtle focus:border-primary focus:ring-4 focus:ring-primary/15;
+}
+.btn-primary {
+  @apply inline-flex items-center justify-center gap-2 rounded-full bg-primary font-semibold text-bg shadow-glow transition-all hover:-translate-y-px hover:brightness-110 active:translate-y-0 disabled:pointer-events-none disabled:opacity-40 disabled:shadow-none;
+}
+.btn-ghost {
+  @apply inline-flex items-center justify-center gap-2 rounded-full border border-border bg-surface font-semibold text-ink shadow-soft transition-all hover:-translate-y-px hover:border-primary/60;
+}
+.btn-whatsapp {
+  @apply inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-b from-whatsapp to-whatsapp-dark font-bold text-white shadow-[0_1px_0_0_rgba(255,255,255,0.3)_inset,0_10px_28px_-8px_rgba(37,211,102,0.65)] transition-all hover:-translate-y-px hover:brightness-105 active:translate-y-0 disabled:pointer-events-none disabled:opacity-40 disabled:shadow-none;
+}
+.text-gradient {
+  @apply bg-brand-gradient bg-clip-text text-transparent;
+}

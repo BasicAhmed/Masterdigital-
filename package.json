@@ -1,0 +1,30 @@
+{
+  "name": "master-digital",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "firebase": "^10.12.4",
+    "framer-motion": "^11.3.19",
+    "lucide-react": "^0.408.0",
+    "next": "14.2.35",
+    "next-themes": "^0.3.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.13",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.40",
+    "tailwindcss": "^3.4.7",
+    "typescript": "^5.5.4"
+  }
+}
