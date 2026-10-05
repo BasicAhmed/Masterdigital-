@@ -269,36 +269,8 @@ export default function Calculator({ rates, disabledFlows = [] }: { rates: RateR
       : { box: "border-primary/25 bg-primary/10", dot: "bg-primary", text: "text-primary" };
 
   return (
-    <section id="calculator" className="relative border-t border-border/60 py-16 sm:py-24">
-      <div className="container-page">
-        <div className="grid gap-10 lg:grid-cols-[1fr_1.15fr] lg:items-center">
-          <div>
-            <p className="eyebrow">الحاسبة</p>
-            <h2 className="section-heading mt-3">احسبها صاح</h2>
-            <p className="mt-3 max-w-md text-muted">
-              شوف انت عاوز كم و حتحول كم باسهل طريقه و اطلب الان.
-            </p>
-            <ul className="mt-6 hidden space-y-3 lg:block">
-              {["السعر اللي تشوفه هو اللي يُطبّق", "بدون رسوم مخفية", "الطلب يفتح على واتساب وتفاصيلك جاهزة"].map(
-                (t) => (
-                  <li key={t} className="flex items-center gap-3 text-sm text-ink">
-                    <span className="flex size-6 items-center justify-center rounded-full bg-primary/10 text-primary shadow-soft">
-                      <Check size={13} />
-                    </span>
-                    {t}
-                  </li>
-                )
-              )}
-            </ul>
-          </div>
-
-          <div className="relative">
-            <div
-              aria-hidden="true"
-              className="absolute -inset-4 -z-10 rounded-[2.5rem] bg-brand-gradient opacity-20 blur-3xl"
-            />
-            <div className="card relative overflow-hidden p-4 shadow-lift sm:p-6">
-              <div aria-hidden="true" className="absolute inset-x-0 top-0 h-px bg-brand-gradient opacity-70" />
+    <div id="calculator" className="relative scroll-mt-24">
+            <div className="calc-card relative overflow-hidden p-4 sm:p-6">
 
               {/* Mode toggle */}
               <div className="mb-5 grid grid-cols-2 gap-1 rounded-2xl border border-border/70 bg-surface2 p-1 shadow-well">
@@ -317,10 +289,10 @@ export default function Calculator({ rates, disabledFlows = [] }: { rates: RateR
                       <motion.span
                         layoutId="mode-pill"
                         transition={{ type: "spring", stiffness: 400, damping: 32 }}
-                        className="absolute inset-0 rounded-xl bg-primary shadow-glow"
+                        className="absolute inset-0 rounded-xl bg-brand-navy"
                       />
                     )}
-                    <span className={`relative ${mode === value ? "text-bg" : "text-muted"}`}>{text}</span>
+                    <span className={`relative ${mode === value ? "text-white" : "text-muted"}`}>{text}</span>
                   </button>
                 ))}
               </div>
@@ -374,7 +346,7 @@ export default function Calculator({ rates, disabledFlows = [] }: { rates: RateR
                   transition={{ type: "spring", stiffness: 300, damping: 20 }}
                   aria-label="بدّل العملتين"
                   title="بدّل العملتين"
-                  className="absolute left-1/2 top-1/2 z-10 flex size-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-4 border-surface bg-primary text-bg shadow-glow"
+                  className="absolute left-1/2 top-1/2 z-10 flex size-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-4 border-surface bg-brand-navy text-white"
                 >
                   <ArrowLeftRight size={15} />
                 </motion.button>
@@ -457,7 +429,7 @@ export default function Calculator({ rates, disabledFlows = [] }: { rates: RateR
               </AnimatePresence>
 
               {/* Result */}
-              <div className={`relative mt-4 overflow-hidden rounded-2xl border border-primary/25 transition-opacity ${unavailable ? "opacity-60" : ""} bg-gradient-to-br from-primary/15 via-primary/5 to-accent/10 p-5 text-center shadow-well`}>
+              <div className={`relative mt-4 overflow-hidden rounded-2xl result-well transition-opacity ${unavailable ? "opacity-60" : ""} p-5 text-center`}>
                 <div className="flex items-center justify-center gap-2">
                   <p className="text-xs font-medium text-muted">المستلم يستلم</p>
                   {rate && (
@@ -496,7 +468,7 @@ export default function Calculator({ rates, disabledFlows = [] }: { rates: RateR
                     {rate ? (
                       <>
                         {finalAmountReceived.toLocaleString("en-US", { maximumFractionDigits: 2 })}{" "}
-                        <span className="text-gradient">{toCurrency.code}</span>
+                        <span className="text-brand-gold">{toCurrency.code}</span>
                       </>
                     ) : (
                       "اختر ممر التحويل"
@@ -597,9 +569,6 @@ export default function Calculator({ rates, disabledFlows = [] }: { rates: RateR
                 يفتح واتساب ورسالتك جاهزة بكل التفاصيل — ما عليك إلا ترسلها.
               </p>
             </div>
-          </div>
-        </div>
-      </div>
-    </section>
+    </div>
   );
 }

@@ -38,12 +38,11 @@ export default function FAQ() {
   const [open, setOpen] = useState<number | null>(0);
 
   return (
-    <section id="faq" className="border-t border-border py-20 sm:py-28">
+    <section id="faq" className="border-t border-border py-16 sm:py-24">
       <div className="container-page">
-        <p className="eyebrow">الأسئلة الشائعة</p>
-        <h2 className="section-heading mt-3">أسئلة يتكرر سؤالها.</h2>
+        <h2 className="section-heading">أسئلة شائعة</h2>
 
-        <div className="mt-8 divide-y divide-border rounded-2xl border border-border">
+        <div className="mt-10 max-w-3xl divide-y divide-border border-y border-border">
           {FAQS.map((item, i) => {
             const isOpen = open === i;
             return (
@@ -51,9 +50,9 @@ export default function FAQ() {
                 <button
                   onClick={() => setOpen(isOpen ? null : i)}
                   aria-expanded={isOpen}
-                  className="flex w-full items-center justify-between gap-4 px-5 py-4.5 text-right sm:px-6"
+                  className="flex w-full items-center justify-between gap-4 py-5 text-right"
                 >
-                  <span className="font-medium text-ink">{item.q}</span>
+                  <span className="font-display font-bold text-ink">{item.q}</span>
                   <ChevronDown
                     size={18}
                     className={`shrink-0 text-subtle transition-transform ${
@@ -62,7 +61,7 @@ export default function FAQ() {
                   />
                 </button>
                 {isOpen && (
-                  <div className="px-5 pb-5 text-sm leading-relaxed text-muted sm:px-6">
+                  <div className="pb-6 text-sm leading-loose text-muted">
                     {item.a}
                   </div>
                 )}

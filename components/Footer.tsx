@@ -10,7 +10,7 @@ export default function Footer() {
   const { channel, wa } = useContact();
 
   return (
-    <footer className="border-t border-border/60 py-10 pb-24 sm:pb-10">
+    <footer className="ribbon py-10 pb-24 sm:pb-10 on-navy">
       <div className="container-page flex flex-col items-center justify-between gap-5 sm:flex-row">
         <Brand size={36} />
 
@@ -19,7 +19,7 @@ export default function Footer() {
             href={wa(MESSAGES.general)}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3.5 py-2 text-xs font-semibold text-ink shadow-soft transition-colors hover:border-whatsapp/60"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-white/20 px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:border-whatsapp"
           >
             <WhatsAppIcon size={14} className="text-whatsapp" /> واتساب
           </a>
@@ -28,7 +28,7 @@ export default function Footer() {
               href={channel}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3.5 py-2 text-xs font-semibold text-ink shadow-soft transition-colors hover:border-whatsapp/60"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-white/20 px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:border-whatsapp"
             >
               <Megaphone size={14} className="text-whatsapp" /> قناة واتساب
             </a>
@@ -40,7 +40,7 @@ export default function Footer() {
         </p>
       </div>
 
-      <div className="container-page mt-6 flex justify-center border-t border-border/40 pt-5">
+      <div className="container-page mt-6 flex justify-center border-t border-white/10 pt-5">
         <a
           href="https://ninotechy.com"
           target="_blank"

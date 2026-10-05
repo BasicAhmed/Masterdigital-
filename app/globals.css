@@ -2,55 +2,68 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Master Digital — taken from the shield logo: a navy field, royal blue,
+   a black ribbon carrying a thin gold thread, on clean white. */
 :root {
   color-scheme: light;
-  /* Light theme (default) — Master Digital royal blue / navy / gold on white */
-  --color-bg: 244 247 252;
+  --color-bg: 246 248 252;
   --color-surface: 255 255 255;
-  --color-surface2: 235 241 250;
-  --color-border: 214 224 240;
-  --color-ink: 7 25 66;
-  --color-muted: 66 84 122;
-  --color-subtle: 122 138 170;
+  --color-surface2: 238 243 250;
+  --color-border: 217 226 240;
+  --color-ink: 6 22 58;
+  --color-muted: 62 80 118;
+  --color-subtle: 118 134 166;
   --color-primary: 27 76 153;
-  --color-accent: 160 122 20;
-  --shadow-rgb: 14 40 96;
+  --color-accent: 158 122 22;
+  --shadow-rgb: 10 34 88;
   --highlight-rgb: 255 255 255;
 }
 
 .dark {
   color-scheme: dark;
-  --color-bg: 4 13 36;
-  --color-surface: 9 23 56;
-  --color-surface2: 14 32 72;
-  --color-border: 30 52 100;
-  --color-ink: 236 242 255;
-  --color-muted: 150 168 204;
-  --color-subtle: 104 124 166;
-  --color-primary: 98 150 236;
-  --color-accent: 222 184 96;
-  --shadow-rgb: 0 4 18;
+  --color-bg: 3 10 28;
+  --color-surface: 8 20 50;
+  --color-surface2: 13 29 66;
+  --color-border: 29 49 96;
+  --color-ink: 238 243 255;
+  --color-muted: 156 172 206;
+  --color-subtle: 108 126 166;
+  --color-primary: 104 156 240;
+  --color-accent: 226 190 104;
+  --shadow-rgb: 0 3 14;
   --highlight-rgb: 255 255 255;
+}
+
+/* Anything placed on the navy field reads in white, in both themes. */
+.on-navy,
+.result-well {
+  --color-ink: 255 255 255;
+  --color-muted: 190 205 235;
+  --color-subtle: 140 160 204;
+  --color-primary: 226 190 104;
+  --color-border: 60 88 150;
+  --color-surface: 16 40 96;
+  --color-surface2: 22 50 112;
+  color: rgb(var(--color-ink));
 }
 
 * {
   scroll-behavior: smooth;
 }
 
-/* Keep section headings clear of the sticky nav when jumping via links. */
 section[id] {
-  scroll-margin-top: 64px;
+  scroll-margin-top: 72px;
 }
 
 ::selection {
-  background: rgb(var(--color-primary));
-  color: rgb(var(--color-bg));
+  background: #072969;
+  color: #fff;
 }
 
 :focus-visible {
   outline: 2px solid rgb(var(--color-primary));
   outline-offset: 3px;
-  border-radius: 4px;
+  border-radius: 6px;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -68,47 +81,96 @@ section[id] {
   @apply mx-auto w-full max-w-6xl px-5 sm:px-8;
 }
 
-.eyebrow {
-  @apply text-xs font-semibold text-primary;
-}
-
 .section-heading {
-  @apply font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl;
+  @apply font-display text-[1.75rem] font-extrabold leading-[1.35] tracking-tight text-ink sm:text-[2.5rem];
+}
+/* The logo's gold thread, drawn under every section title. */
+.section-heading::after {
+  content: "";
+  @apply mt-4 block h-[3px] w-14 rounded-full bg-brand-gold;
 }
 
-/* The 3D shield logo always sits on a white tile so it reads in both themes */
 .logo-tile {
-  @apply rounded-xl bg-white p-0.5 shadow-soft ring-1 ring-black/5;
+  @apply rounded-xl bg-white p-0.5 ring-1 ring-black/5;
 }
 .label {
   @apply mb-1.5 block text-xs font-medium text-subtle;
 }
 .chip {
-  @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold;
+  @apply inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold;
 }
 .num {
   @apply font-mono tabular-nums;
 }
 
-/* ---------- Shared surfaces & controls ---------- */
+/* ---------- The navy field (hero, contact, admin sidebar) ---------- */
+.navy-field {
+  background-color: #06163a;
+  background-image: radial-gradient(120% 90% at 100% 0%, #1b4c99 0%, rgba(27, 76, 153, 0) 55%),
+    radial-gradient(90% 80% at 0% 100%, #0a2a66 0%, rgba(10, 42, 102, 0) 60%);
+}
+/* Faint concentric shield lines, echoing the logo's outline. */
+.shield-lines {
+  background-image: repeating-radial-gradient(circle at 12% 110%, rgba(255, 255, 255, 0.055) 0 1px, transparent 1px 46px);
+}
+
+/* ---------- The ribbon: black band with a gold thread, as on the shield ---------- */
+.ribbon {
+  @apply relative bg-[#07090f] text-white;
+  box-shadow: inset 0 2px 0 #c9a227, inset 0 -2px 0 #c9a227;
+}
+
+/* ---------- Surfaces & controls ---------- */
 .card {
-  @apply rounded-3xl border border-border/70 bg-surface shadow-card;
+  @apply rounded-[1.25rem] border border-border/80 bg-surface shadow-card;
 }
 .card-sm {
-  @apply rounded-2xl border border-border/70 bg-surface shadow-soft;
+  @apply rounded-2xl border border-border/80 bg-surface shadow-soft;
+}
+.calc-card {
+  @apply rounded-[1.5rem] border border-white/10 bg-surface text-ink;
+  box-shadow: 0 2px 0 0 #c9a227 inset, 0 30px 70px -28px rgba(0, 6, 28, 0.75);
+  /* the card is a light island even when it sits inside the navy field */
+  --color-ink: 6 22 58;
+  --color-muted: 62 80 118;
+  --color-subtle: 118 134 166;
+  --color-primary: 27 76 153;
+  --color-border: 217 226 240;
+  --color-surface: 255 255 255;
+  --color-surface2: 238 243 250;
+}
+.dark .calc-card {
+  --color-ink: 238 243 255;
+  --color-muted: 156 172 206;
+  --color-subtle: 108 126 166;
+  --color-primary: 104 156 240;
+  --color-border: 29 49 96;
+  --color-surface: 8 20 50;
+  --color-surface2: 13 29 66;
+}
+.result-well {
+  @apply relative overflow-hidden rounded-2xl mt-4;
+  background-color: #06163a;
+  background-image: radial-gradient(110% 120% at 100% 0%, #1b4c99 0%, rgba(27, 76, 153, 0) 60%);
 }
 .field {
-  @apply w-full rounded-xl border border-border bg-surface2 text-ink shadow-well outline-none transition-colors placeholder:text-subtle focus:border-primary focus:ring-4 focus:ring-primary/15;
+  @apply w-full rounded-xl border border-border bg-surface2 text-ink outline-none transition-colors placeholder:text-subtle focus:border-primary focus:bg-surface focus:ring-4 focus:ring-primary/15;
 }
 .btn-primary {
-  @apply inline-flex items-center justify-center gap-2 rounded-full bg-primary font-semibold text-bg shadow-glow transition-all hover:-translate-y-px hover:brightness-110 active:translate-y-0 disabled:pointer-events-none disabled:opacity-40 disabled:shadow-none;
+  @apply inline-flex items-center justify-center gap-2 rounded-xl bg-brand-navy font-bold text-white transition-all hover:bg-brand-blue active:scale-[0.99] disabled:pointer-events-none disabled:opacity-40;
+}
+.dark .btn-primary {
+  @apply bg-brand-blue hover:bg-brand-royal;
+}
+.btn-gold {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl bg-brand-gold font-bold text-[#06163a] transition-all hover:brightness-110 active:scale-[0.99];
 }
 .btn-ghost {
-  @apply inline-flex items-center justify-center gap-2 rounded-full border border-border bg-surface font-semibold text-ink shadow-soft transition-all hover:-translate-y-px hover:border-primary/60;
+  @apply inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-surface font-semibold text-ink transition-all hover:border-primary/60;
 }
 .btn-whatsapp {
-  @apply inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-b from-whatsapp to-whatsapp-dark font-bold text-white shadow-[0_1px_0_0_rgba(255,255,255,0.3)_inset,0_10px_28px_-8px_rgba(37,211,102,0.65)] transition-all hover:-translate-y-px hover:brightness-105 active:translate-y-0 disabled:pointer-events-none disabled:opacity-40 disabled:shadow-none;
+  @apply inline-flex items-center justify-center gap-2 rounded-xl bg-whatsapp font-bold text-white transition-all hover:bg-whatsapp-dark active:scale-[0.99] disabled:pointer-events-none disabled:opacity-40;
 }
 .text-gradient {
-  @apply bg-brand-gradient bg-clip-text text-transparent;
+  @apply text-brand-gold;
 }

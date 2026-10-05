@@ -121,45 +121,63 @@ export default function AdminApp({ onSignOut, userEmail }: { onSignOut?: () => v
     [routes, customers, txs, guard]
   );
 
+  const current = TABS.find(([v]) => v === tab)!;
+
   return (
-    <div className="min-h-screen pb-24">
-      <header className="sticky top-0 z-30 border-b border-border/60 bg-bg/85 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-2.5 sm:px-6">
-          <Brand size={38} sub="نظام إدارة التحويلات" />
-          <div className="flex items-center gap-2">
-            <span className="hidden sm:block">
-              <button onClick={() => setForm({})} className="btn-primary px-4 py-2.5 text-xs">
-                <Plus size={15} /> معاملة جديدة
-              </button>
-            </span>
-            <ThemeToggle />
-            {onSignOut && (
-              <button
-                onClick={onSignOut}
-                title={userEmail}
-                aria-label="تسجيل الخروج"
-                className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-2 text-xs font-semibold text-muted shadow-soft transition-colors hover:text-ink"
-              >
-                <LogOut size={14} /> <span className="hidden sm:inline">خروج</span>
-              </button>
-            )}
-          </div>
+    <div className="min-h-screen pb-28 lg:pb-12 lg:pr-64">
+      {/* Desktop: navy sidebar */}
+      <aside className="navy-field on-navy fixed inset-y-0 right-0 z-30 hidden w-64 flex-col p-5 lg:flex">
+        <div aria-hidden="true" className="shield-lines pointer-events-none absolute inset-0" />
+        <div className="relative">
+          <Brand size={42} sub="نظام إدارة التحويلات" />
         </div>
-        <nav className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-3 sm:px-5" aria-label="أقسام النظام">
+        <button onClick={() => setForm({})} className="btn-gold relative mt-7 w-full py-3 text-sm">
+          <Plus size={16} /> معاملة جديدة
+        </button>
+        <nav className="relative mt-6 flex flex-col gap-1" aria-label="أقسام النظام">
           {TABS.map(([value, label, Icon]) => (
             <button
               key={value}
               onClick={() => setTab(value)}
               aria-current={tab === value ? "page" : undefined}
-              className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3.5 py-2.5 text-sm font-semibold transition-colors ${
-                tab === value ? "border-primary text-primary" : "border-transparent text-muted hover:text-ink"
+              className={`flex items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-semibold transition-colors ${
+                tab === value ? "bg-white text-[#06163a]" : "text-white/75 hover:bg-white/10 hover:text-white"
               }`}
             >
-              <Icon size={15} /> {label}
+              <Icon size={17} /> {label}
             </button>
           ))}
         </nav>
+        <div className="relative mt-auto flex items-center justify-between gap-2 border-t border-white/15 pt-4">
+          <div className="min-w-0">
+            {userEmail && <p className="truncate text-[11px] text-white/60" dir="ltr">{userEmail}</p>}
+            {onSignOut && (
+              <button onClick={onSignOut} className="mt-0.5 inline-flex items-center gap-1.5 text-xs font-semibold text-white/85 hover:text-white">
+                <LogOut size={13} /> تسجيل الخروج
+              </button>
+            )}
+          </div>
+          <ThemeToggle />
+        </div>
+      </aside>
+
+      {/* Mobile: slim top bar */}
+      <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-border bg-surface/95 px-4 py-2.5 backdrop-blur lg:hidden">
+        <Brand size={36} sub="نظام إدارة التحويلات" />
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          {onSignOut && (
+            <button onClick={onSignOut} aria-label="تسجيل الخروج" className="flex size-9 items-center justify-center rounded-xl border border-border text-muted">
+              <LogOut size={15} />
+            </button>
+          )}
+        </div>
       </header>
+
+      <div className="mx-auto hidden max-w-6xl items-end justify-between px-6 pt-8 lg:flex">
+        <h1 className="font-display text-2xl font-extrabold text-ink">{current[1]}</h1>
+        <p className="num text-xs text-subtle" dir="ltr">{new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p>
+      </div>
 
       <main className="mx-auto max-w-6xl px-4 pt-5 sm:px-6">
         {demoMode && (
@@ -197,12 +215,29 @@ export default function AdminApp({ onSignOut, userEmail }: { onSignOut?: () => v
         )}
       </main>
 
-      {/* Mobile: the main action is always one thumb away */}
-      <div className="fixed inset-x-4 bottom-4 z-20 sm:hidden">
-        <button onClick={() => setForm({})} className="btn-primary w-full py-3.5 text-sm shadow-lift">
-          <Plus size={16} /> معاملة جديدة
-        </button>
-      </div>
+      {/* Mobile: tab bar with the main action in the middle of the thumb zone */}
+      <button
+        onClick={() => setForm({})}
+        aria-label="معاملة جديدة"
+        className="btn-gold fixed bottom-[4.75rem] left-4 z-30 size-14 rounded-2xl shadow-lift lg:hidden"
+      >
+        <Plus size={24} />
+      </button>
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden" aria-label="أقسام النظام">
+        {TABS.map(([value, label, Icon]) => (
+          <button
+            key={value}
+            onClick={() => setTab(value)}
+            aria-current={tab === value ? "page" : undefined}
+            className={`flex flex-col items-center gap-1 py-2.5 text-[10.5px] font-semibold ${tab === value ? "text-primary" : "text-subtle"}`}
+          >
+            <span className={`flex h-7 w-12 items-center justify-center rounded-lg ${tab === value ? "bg-primary/10" : ""}`}>
+              <Icon size={18} />
+            </span>
+            {label}
+          </button>
+        ))}
+      </nav>
 
       {form && <TransactionForm data={data} initialCustomerId={form.customerId} edit={form.edit} onClose={() => setForm(null)} />}
     </div>

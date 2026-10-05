@@ -6,7 +6,6 @@ import Nav from "@/components/Nav";
 import Hero from "@/components/Hero";
 import RateTicker from "@/components/RateTicker";
 import RatesTable from "@/components/RatesTable";
-import Calculator from "@/components/Calculator";
 import WhyChoose from "@/components/WhyChoose";
 import HowItWorks from "@/components/HowItWorks";
 import FAQ from "@/components/FAQ";
@@ -21,8 +20,7 @@ export default async function Home() {
   return (
     <ContactProvider value={contact}>
       <Nav />
-      <Hero />
-      <Calculator rates={rates} disabledFlows={disabledFlows} />
+      <Hero rates={rates} disabledFlows={disabledFlows} />
       <RateTicker rates={rates} disabledFlows={disabledFlows} />
       <RatesTable rates={rates} disabledFlows={disabledFlows} />
       <WhyChoose />

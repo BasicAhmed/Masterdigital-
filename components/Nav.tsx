@@ -28,7 +28,7 @@ export default function Nav() {
   return (
     <header
       className={`sticky top-0 z-50 transition-colors duration-300 ${
-        scrolled ? "bg-bg/90 backdrop-blur border-b border-border" : "bg-transparent"
+        scrolled ? "border-b border-border bg-surface/95 backdrop-blur" : "border-b border-transparent bg-surface"
       }`}
     >
       <nav className="container-page flex h-16 items-center justify-between">
@@ -41,7 +41,7 @@ export default function Nav() {
             <a
               key={l.href}
               href={l.href}
-              className="text-sm font-medium text-muted transition-colors hover:text-ink"
+              className="text-sm font-semibold text-muted transition-colors hover:text-primary"
             >
               {l.label}
             </a>
@@ -52,7 +52,7 @@ export default function Nav() {
           <ThemeToggle />
           <a
             href="#calculator"
-            className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-bg transition-transform hover:scale-[1.03]"
+            className="btn-primary px-5 py-2.5 text-sm"
           >
             اطلب الآن
           </a>
@@ -86,7 +86,7 @@ export default function Nav() {
             <a
               href="#calculator"
               onClick={() => setOpen(false)}
-              className="mt-2 rounded-full bg-primary px-5 py-3 text-center text-sm font-semibold text-bg"
+              className="btn-primary mt-2 px-5 py-3 text-sm"
             >
               اطلب الآن
             </a>

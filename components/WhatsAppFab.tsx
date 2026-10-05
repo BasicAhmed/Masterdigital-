@@ -30,10 +30,9 @@ export default function WhatsAppFab() {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.6, y: 20 }}
           transition={{ type: "spring", stiffness: 380, damping: 26 }}
-          className="fixed bottom-5 left-5 z-40 flex size-14 items-center justify-center rounded-full bg-whatsapp text-white shadow-[0_10px_30px_-6px_rgba(37,211,102,0.6)] transition-transform hover:scale-105"
+          className="fixed bottom-5 left-5 z-40 flex size-14 items-center justify-center rounded-2xl bg-whatsapp text-white shadow-[0_10px_30px_-10px_rgba(0,0,0,0.5)] transition-transform hover:scale-105"
         >
-          <span className="absolute inset-0 animate-ping rounded-full bg-whatsapp opacity-25" />
-          <WhatsAppIcon size={28} className="relative" />
+                    <WhatsAppIcon size={28} className="relative" />
         </motion.a>
       )}
     </AnimatePresence>

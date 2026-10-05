@@ -29,7 +29,7 @@ export function Modal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="absolute inset-0 bg-brand-navy/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-[#06163a]/70" onClick={onClose} />
       <div
         className={`relative flex max-h-[94vh] w-full flex-col overflow-hidden rounded-t-3xl border border-border/70 bg-surface shadow-lift sm:rounded-3xl ${
           wide ? "sm:max-w-3xl" : "sm:max-w-lg"
@@ -153,7 +153,7 @@ export function Stat({
         <p className="text-xs font-medium text-muted">{label}</p>
         {icon && <span className={`rounded-lg p-1.5 ${tones[tone]}`}>{icon}</span>}
       </div>
-      <p className="num mt-2 text-2xl font-bold tracking-tight text-ink" dir="ltr">
+      <p className="num mt-2 text-[1.65rem] font-bold tracking-tight text-ink" dir="ltr">
         {value}
       </p>
       {sub && <p className="mt-1 text-[11px] text-subtle">{sub}</p>}
@@ -183,7 +183,7 @@ export function RankBars({
             </span>
           </div>
           <div className="mt-1.5 flex items-center gap-2">
-            <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface2">
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface2">
               <div
                 className={`h-full rounded-full ${r.value < 0 ? "bg-red-500" : "bg-primary"}`}
                 style={{ width: `${Math.max(2, (Math.abs(r.value) / max) * 100)}%` }}

@@ -140,16 +140,16 @@ export default function FinanceTab({ data, goTo }: { data: AdminData; goTo: (t: 
     <div className="space-y-5">
       {/* Today / month — always visible, independent of the period filter */}
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className="relative overflow-hidden rounded-3xl bg-brand-gradient p-5 text-white shadow-lift">
+        <div className="navy-field on-navy relative overflow-hidden rounded-2xl p-5 shadow-card" style={{ boxShadow: "inset 0 2px 0 #c9a227" }}>
           <p className="text-xs font-medium text-white/75">أداء اليوم</p>
-          <p className="num mt-1 text-3xl font-bold" dir="ltr">{fmtUsd(today.profit)}</p>
+          <p className="num mt-1 text-4xl font-bold" dir="ltr">{fmtUsd(today.profit)}</p>
           <p className="mt-1 text-xs text-white/80">
             صافي ربح · <span className="num">{today.count}</span> معاملة · حجم <span className="num" dir="ltr">{fmtUsd(today.volume)}</span>
           </p>
         </div>
         <div className="card-sm p-5">
           <p className="text-xs font-medium text-muted">أداء هذا الشهر</p>
-          <p className="num mt-1 text-3xl font-bold text-ink" dir="ltr">{fmtUsd(month.profit)}</p>
+          <p className="num mt-1 text-4xl font-bold text-ink" dir="ltr">{fmtUsd(month.profit)}</p>
           <p className="mt-1 text-xs text-muted">
             صافي ربح · <span className="num">{month.count}</span> معاملة · حجم <span className="num" dir="ltr">{fmtUsd(month.volume)}</span>
           </p>
@@ -165,8 +165,8 @@ export default function FinanceTab({ data, goTo }: { data: AdminData; goTo: (t: 
               key={k}
               onClick={() => setPeriod(k)}
               aria-pressed={period === k}
-              className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
-                period === k ? "border-primary bg-primary text-bg shadow-glow" : "border-border bg-surface text-muted shadow-soft hover:text-ink"
+              className={`rounded-lg border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                period === k ? "border-brand-navy bg-brand-navy text-white" : "border-border bg-surface text-muted hover:text-ink"
               }`}
             >
               {label}

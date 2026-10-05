@@ -48,11 +48,10 @@ export default function RatesTable({ rates, disabledFlows = [] }: { rates: RateR
   });
 
   return (
-    <section id="rates" className="border-t border-border py-20 sm:py-28">
+    <section id="rates" className="py-16 sm:py-24">
       <div className="container-page">
-        <p className="eyebrow">الأسعار المباشرة</p>
-        <h2 className="section-heading mt-3">كل دول التحويل في جدول واحد واضح.</h2>
-        <p className="mt-3 max-w-lg text-muted">
+        <h2 className="section-heading">أسعار اليوم</h2>
+        <p className="mt-4 max-w-lg text-muted">
           الأسعار تتحدث خلال اليوم. اضغط على أي سطر عشان تحسبه مباشرة في الحاسبة.
         </p>
 
@@ -70,10 +69,10 @@ export default function RatesTable({ rates, disabledFlows = [] }: { rates: RateR
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setFilter("ALL")}
-              className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ${
+              className={`rounded-lg border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
                 filter === "ALL"
-                  ? "border-primary bg-primary text-bg shadow-glow"
-                  : "border-border bg-surface text-muted shadow-soft hover:text-ink"
+                  ? "border-brand-navy bg-brand-navy text-white"
+                  : "border-border bg-surface text-muted hover:text-ink"
               }`}
             >
               الكل
@@ -82,10 +81,10 @@ export default function RatesTable({ rates, disabledFlows = [] }: { rates: RateR
               <button
                 key={c}
                 onClick={() => setFilter(c)}
-                className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ${
+                className={`rounded-lg border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
                   filter === c
-                    ? "border-primary bg-primary text-bg shadow-glow"
-                    : "border-border bg-surface text-muted shadow-soft hover:text-ink"
+                    ? "border-brand-navy bg-brand-navy text-white"
+                    : "border-border bg-surface text-muted hover:text-ink"
                 }`}
                 dir="ltr"
               >
@@ -95,10 +94,10 @@ export default function RatesTable({ rates, disabledFlows = [] }: { rates: RateR
           </div>
         </div>
 
-        <div className="card mt-6 overflow-x-auto p-0">
+        <div className="card mt-6 overflow-hidden overflow-x-auto p-0">
           <table className="w-full min-w-[560px] border-collapse text-right font-mono text-sm">
             <thead>
-              <tr className="border-b border-border bg-surface text-xs text-subtle">
+              <tr className="bg-brand-navy text-xs text-white">
                 <th className="px-5 py-3.5 font-medium">من</th>
                 <th className="px-5 py-3.5 font-medium">إلى</th>
                 <th className="px-5 py-3.5 font-medium">السعر</th>
@@ -126,7 +125,7 @@ export default function RatesTable({ rates, disabledFlows = [] }: { rates: RateR
                     <td className="px-5 py-3.5 text-ink" dir="ltr">
                       {to.flag} {r.to}
                     </td>
-                    <td className="px-5 py-3.5 font-semibold text-primary" dir="ltr">
+                    <td className="px-5 py-3.5 text-base font-bold text-ink" dir="ltr">
                       {off ? (
                         <span className="rounded-full bg-red-500/10 px-2.5 py-1 font-body text-xs font-semibold text-red-500">
                           غير متاح حالياً

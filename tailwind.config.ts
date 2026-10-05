@@ -29,17 +29,17 @@ const config: Config = {
         },
       },
       fontFamily: {
-        display: ["Cairo", "IBM Plex Sans Arabic", "system-ui", "sans-serif"],
+        display: ["Alexandria", "IBM Plex Sans Arabic", "system-ui", "sans-serif"],
         body: ["IBM Plex Sans Arabic", "system-ui", "sans-serif"],
         mono: ["IBM Plex Mono", "ui-monospace", "monospace"],
       },
       boxShadow: {
         // Layered, navy-tinted elevation. --shadow-rgb swaps per theme.
-        card: "0 1px 0 0 rgb(var(--highlight-rgb) / 0.05) inset, 0 1px 2px rgb(var(--shadow-rgb) / 0.10), 0 12px 32px -12px rgb(var(--shadow-rgb) / 0.35)",
+        card: "0 1px 2px rgb(var(--shadow-rgb) / 0.06), 0 14px 34px -18px rgb(var(--shadow-rgb) / 0.28)",
         lift: "0 1px 0 0 rgb(var(--highlight-rgb) / 0.06) inset, 0 2px 4px rgb(var(--shadow-rgb) / 0.12), 0 24px 48px -16px rgb(var(--shadow-rgb) / 0.45)",
-        soft: "0 1px 2px rgb(var(--shadow-rgb) / 0.08), 0 4px 12px -4px rgb(var(--shadow-rgb) / 0.20)",
-        well: "inset 0 1px 3px rgb(var(--shadow-rgb) / 0.22)",
-        glow: "0 1px 0 0 rgb(255 255 255 / 0.25) inset, 0 10px 28px -8px rgb(var(--color-primary) / 0.65)",
+        soft: "0 1px 2px rgb(var(--shadow-rgb) / 0.05), 0 6px 16px -10px rgb(var(--shadow-rgb) / 0.22)",
+        well: "inset 0 1px 2px rgb(var(--shadow-rgb) / 0.10)",
+        glow: "0 8px 20px -10px rgb(var(--shadow-rgb) / 0.55)",
         "glow-lg": "0 0 0 1px rgb(var(--color-primary) / 0.25), 0 20px 60px -16px rgb(var(--color-primary) / 0.55)",
       },
       backgroundImage: {
@@ -59,7 +59,7 @@ const config: Config = {
         },
       },
       animation: {
-        ticker: "ticker 38s linear infinite",
+        ticker: "ticker 46s linear infinite",
         rise: "rise 0.6s cubic-bezier(0.16,1,0.3,1) forwards",
       },
     },

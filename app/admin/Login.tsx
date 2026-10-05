@@ -27,14 +27,14 @@ export default function AdminLogin() {
   const [busy, setBusy] = useState(false);
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-5">
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute -top-40 left-1/2 h-[420px] w-[620px] -translate-x-1/2 rounded-full bg-primary/20 blur-[120px]" />
+    <div className="navy-field relative flex min-h-screen items-center justify-center overflow-hidden px-5">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+        <div className="shield-lines absolute inset-0" />
       </div>
 
-      <div className="card w-full max-w-sm p-6 shadow-lift sm:p-8">
+      <div className="calc-card relative w-full max-w-sm p-6 sm:p-8">
         <div className="flex flex-col items-center text-center">
-          <div className="logo-tile size-20 rounded-2xl shadow-glow-lg">
+          <div className="logo-tile size-20 rounded-2xl">
             <Image src="/logo.png" alt="Master Digital" width={160} height={160} className="h-full w-full object-contain" priority />
           </div>
           <h1 className="mt-4 font-display text-xl font-bold text-ink">لوحة الإدارة</h1>
@@ -98,9 +98,9 @@ export default function AdminLogin() {
         target="_blank"
         rel="noopener"
         dir="ltr"
-        className="absolute bottom-6 left-1/2 -translate-x-1/2 text-[11px] font-medium text-subtle/80 transition-colors hover:text-ink"
+        className="absolute bottom-6 left-1/2 -translate-x-1/2 text-[11px] font-medium text-white/60 transition-colors hover:text-white"
       >
-        By <span className="font-bold text-muted">Nino Techy</span>
+        By <span className="font-bold text-white/85">Nino Techy</span>
       </a>
     </div>
   );

@@ -166,13 +166,15 @@ export default function CustomersTab({ data }: { data: AdminData }) {
           <Search size={15} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-subtle" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ابحث بالاسم، الهاتف أو الدولة…" className="field py-2.5 pl-3 pr-9 text-sm" />
         </div>
-        <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} aria-label="الترتيب" className="field w-auto px-3 py-2.5 text-xs font-semibold">
+        <div className="w-36 shrink-0">
+        <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} aria-label="الترتيب" className="field px-3 py-2.5 text-xs font-semibold">
           <option value="volume">الأعلى حجماً</option>
           <option value="profit">الأعلى ربحاً</option>
           <option value="count">الأكثر معاملات</option>
           <option value="recent">آخر تعامل</option>
           <option value="name">الاسم</option>
         </select>
+        </div>
         <button onClick={exportAll} disabled={!list.length} className="btn-ghost px-4 py-2.5 text-xs disabled:opacity-40">
           <Download size={14} /> تصدير
         </button>
@@ -190,7 +192,29 @@ export default function CustomersTab({ data }: { data: AdminData }) {
       ) : list.length === 0 ? (
         <Empty title="لا يوجد عميل مطابق" />
       ) : (
-        <div className="card-sm overflow-x-auto p-0">
+        <>
+        {/* Phone: one card per customer */}
+        <ul className="space-y-2 sm:hidden">
+          {list.map((x) => (
+            <li key={x.customer.id}>
+              <button onClick={() => setOpenId(x.customer.id)} className="card-sm block w-full p-3.5 text-right">
+                <span className="flex items-start justify-between gap-3">
+                  <span className="min-w-0">
+                    <span className="block truncate font-semibold text-ink">{x.customer.name}</span>
+                    <span className="num block text-xs text-subtle" dir="ltr">{x.customer.phone || "—"}</span>
+                  </span>
+                  <span className="num shrink-0 font-bold text-emerald-600 dark:text-emerald-400" dir="ltr">{fmtUsd(x.profit)}</span>
+                </span>
+                <span className="mt-2 flex items-center justify-between border-t border-border/60 pt-2 text-xs text-muted">
+                  <span><b className="num text-ink">{x.count}</b> معاملة</span>
+                  <span>الحجم <b className="num text-ink" dir="ltr">{fmtUsd(x.volume)}</b></span>
+                  <span className="num" dir="ltr">{x.lastDate ?? "—"}</span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+        <div className="card-sm hidden overflow-x-auto p-0 sm:block">
           <table className="w-full min-w-[640px] border-collapse text-right text-sm">
             <thead>
               <tr className="border-b border-border bg-surface2/60 text-[11px] text-subtle">
@@ -219,6 +243,7 @@ export default function CustomersTab({ data }: { data: AdminData }) {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {adding && <CustomerForm initial={blankCustomer()} data={data} onClose={() => setAdding(false)} />}

@@ -88,7 +88,36 @@ export function TxDetail({ tx, data, onClose }: { tx: Transaction; data: AdminDa
 
 export function TxTable({ txs, onOpen, hideCustomer }: { txs: Transaction[]; onOpen: (t: Transaction) => void; hideCustomer?: boolean }) {
   return (
-    <div className="card-sm overflow-x-auto p-0">
+    <>
+    {/* Phone: one card per transaction */}
+    <ul className="space-y-2 sm:hidden">
+      {txs.map((t) => (
+        <li key={t.id}>
+          <button onClick={() => onOpen(t)} className="card-sm block w-full p-3.5 text-right">
+            <span className="flex items-center justify-between gap-3">
+              <span className="min-w-0 truncate font-semibold text-ink">{hideCustomer ? t.ref : t.customerName}</span>
+              <StatusChip status={t.status} />
+            </span>
+            <span className="mt-2 flex items-end justify-between gap-3">
+              <span>
+                <RouteTag from={t.from} to={t.to} />
+                <span className="num mt-1 block text-sm font-bold text-ink" dir="ltr">
+                  {fmtMoney(t.amount, t.from)} → {fmtMoney(t.payout, t.to)}
+                </span>
+              </span>
+              <span className={`num shrink-0 text-base font-bold ${t.profitUsd < 0 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"}`} dir="ltr">
+                {fmtUsd(t.profitUsd)}
+              </span>
+            </span>
+            <span className="num mt-2 flex justify-between border-t border-border/60 pt-2 text-[11px] text-subtle" dir="ltr">
+              <span>{t.date}</span>
+              <span>{t.ref}</span>
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+    <div className="card-sm hidden overflow-x-auto p-0 sm:block">
       <table className="w-full min-w-[760px] border-collapse text-right text-sm">
         <thead>
           <tr className="border-b border-border bg-surface2/60 text-[11px] text-subtle">
@@ -118,6 +147,7 @@ export function TxTable({ txs, onOpen, hideCustomer }: { txs: Transaction[]; onO
         </tbody>
       </table>
     </div>
+    </>
   );
 }
 
