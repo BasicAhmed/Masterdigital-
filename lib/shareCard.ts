@@ -464,14 +464,14 @@ export async function createShareCardBlob(params: ShareCardParams): Promise<Blob
   }
 
   const wmFont = `700 46px ${AR}`;
-  const jodaW = width(ctx, "MASTER ", wmFont);
-  const transferW = width(ctx, "DIGITAL", wmFont);
-  const wmLeft = W / 2 - (jodaW + transferW) / 2;
+  const masterW = width(ctx, "MASTER ", wmFont);
+  const digitalW = width(ctx, "DIGITAL", wmFont);
+  const wmLeft = W / 2 - (masterW + digitalW) / 2;
   const wmY = tileY + tile + 62;
   text(ctx, "MASTER ", wmLeft, wmY, { font: wmFont, color: C.ink });
-  text(ctx, "DIGITAL", wmLeft + jodaW, wmY, {
+  text(ctx, "DIGITAL", wmLeft + masterW, wmY, {
     font: wmFont,
-    color: brandGradient(ctx, wmLeft + jodaW, 0, wmLeft + jodaW + transferW, 0),
+    color: brandGradient(ctx, wmLeft + masterW, 0, wmLeft + masterW + digitalW, 0),
   });
 
   const now = new Date();
@@ -670,7 +670,7 @@ export async function createShareCardBlob(params: ShareCardParams): Promise<Blob
     ctx.imageSmoothingEnabled = true;
   }
   const ctaR = M + cw - 40;
-  text(ctx, "حوّل فلوسك الآن مع جودة", ctaR, fy + 56, { font: `800 38px ${AR}`, color: C.navy, align: "right", dir: "rtl" });
+  text(ctx, "حوّل فلوسك الآن مع ماستر", ctaR, fy + 56, { font: `800 38px ${AR}`, color: C.navy, align: "right", dir: "rtl" });
   text(ctx, window.location.host, ctaR, fy + 94, { font: `600 26px ${MONO}`, color: "rgba(2,8,23,0.72)", align: "right" });
 
   return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), "image/png"));
