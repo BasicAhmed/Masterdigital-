@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronLeft, Search } from "lucide-react";
+import { ChevronLeft, Search, Star } from "lucide-react";
+import { FavoriteStar } from "./CalcExtras";
+import { useFavorites } from "@/lib/favorites";
 import { SELECT_PAIR_EVENT, type SelectPairDetail } from "./Calculator";
 import { CURRENCIES, type CurrencyCode } from "@/lib/corridors";
 import { formatRate } from "@/lib/format";
@@ -24,7 +26,8 @@ function openInCalculator(from: CurrencyCode, to: CurrencyCode) {
 
 export default function RatesTable({ rates, disabledFlows = [] }: { rates: RateRow[]; disabledFlows?: string[] }) {
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<CurrencyCode | "ALL">("ALL");
+  const [filter, setFilter] = useState<CurrencyCode | "ALL" | "FAV">("ALL");
+  const { favorites } = useFavorites();
 
   const currencies = useMemo(() => {
     const set = new Set<CurrencyCode>();
@@ -36,7 +39,8 @@ export default function RatesTable({ rates, disabledFlows = [] }: { rates: RateR
   }, [rates]);
 
   const filtered = rates.filter((r) => {
-    const matchesFilter = filter === "ALL" || r.from === filter || r.to === filter;
+    const matchesFilter =
+      filter === "ALL" ? true : filter === "FAV" ? favorites.includes(`${r.from}_${r.to}`) : r.from === filter || r.to === filter;
     const q = query.trim().toUpperCase();
     const matchesQuery =
       !q ||
@@ -77,6 +81,16 @@ export default function RatesTable({ rates, disabledFlows = [] }: { rates: RateR
             >
               الكل
             </button>
+            <button
+              onClick={() => setFilter("FAV")}
+              className={`inline-flex items-center gap-1 rounded-lg border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                filter === "FAV"
+                  ? "border-brand-navy bg-brand-navy text-white"
+                  : "border-border bg-surface text-muted hover:text-ink"
+              }`}
+            >
+              <Star size={12} className="text-brand-gold" fill="currentColor" /> المفضلة
+            </button>
             {currencies.map((c) => (
               <button
                 key={c}
@@ -102,7 +116,7 @@ export default function RatesTable({ rates, disabledFlows = [] }: { rates: RateR
                 <th className="px-5 py-3.5 font-medium">إلى</th>
                 <th className="px-5 py-3.5 font-medium">السعر</th>
                 <th className="px-5 py-3.5 font-medium">آخر تحديث</th>
-                <th className="w-10 px-3 py-3.5" aria-hidden="true" />
+                <th className="w-20 px-3 py-3.5" aria-hidden="true" />
               </tr>
             </thead>
             <tbody>
@@ -135,8 +149,11 @@ export default function RatesTable({ rates, disabledFlows = [] }: { rates: RateR
                       )}
                     </td>
                     <td className="px-5 py-3.5 text-subtle" dir="ltr">{formatUpdated(r.updatedAt)}</td>
-                    <td className="px-3 py-3.5 text-subtle transition-colors group-hover:text-primary">
-                      <ChevronLeft size={16} />
+                    <td className="px-3 py-2 text-subtle transition-colors group-hover:text-primary">
+                      <span className="flex items-center justify-end gap-1">
+                        <FavoriteStar from={r.from} to={r.to} />
+                        <ChevronLeft size={16} />
+                      </span>
                     </td>
                   </tr>
                 );
@@ -144,7 +161,9 @@ export default function RatesTable({ rates, disabledFlows = [] }: { rates: RateR
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-5 py-8 text-center text-muted">
-                    لا توجد نتائج مطابقة لـ «{query}».
+                    {filter === "FAV" && !query
+                      ? "لسه ما أضفت مسارات للمفضلة — اضغط على النجمة جنب أي سعر."
+                      : `لا توجد نتائج مطابقة لـ «${query}».`}
                   </td>
                 </tr>
               )}

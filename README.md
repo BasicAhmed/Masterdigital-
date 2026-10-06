@@ -24,6 +24,10 @@ so USDT → SDG and SDG → USDT earn different percentages.
 | المالية (Finance) | Today / this-month performance, totals for any period (transactions, volume, revenue, profit, margin), daily profit chart, most-used and most-profitable routes, best customers, volume by currency, payment methods, monthly table, report export |
 | المعاملات (Transactions) | Search + filter by customer, reference, date, route, currency, status · detail view · edit / status change / delete · CSV export |
 | العملاء (Customers) | Add, search, sort · customer page with volume, revenue, profit, top routes and full history · statement export |
+| الحسابات (Accounts) | Money owed to us / by us, per person or company · partial repayments until settled · per-currency and per-party balances · overdue flag · export |
+| السيولة (Liquidity) | Balance per currency and total in USD, computed from completed transactions + repayments + manual deposits/withdrawals · movement log · export |
+| تنبيهات الأسعار (Price alerts) | Alerts customers set from the calculator · flagged when the rate is reached · one-tap WhatsApp notice (email automatic when Resend is configured) |
+| الاقتراحات والشكاوى (Feedback) | Inbox for suggestions, complaints and problem reports sent from the site |
 | الأسعار (Rates) | The template's rates screen, with a margin field on each direction |
 | التواصل (Contact) | WhatsApp number, channel link, email, hours |
 
@@ -44,6 +48,22 @@ transactions count toward revenue and profit.
 
 Currencies: SDG, EGP, UGX, RWF, KES, USDT — 9 pairs, 18 routes
 (`lib/corridors.ts`). Starting market prices: `data/rates.seed.json`.
+
+## How the modules connect
+
+All screens read one shared copy of the records (`app/admin/AdminApp.tsx`):
+
+- A **completed transaction** adds what the customer paid to that currency's
+  liquidity and removes the payout from the other currency.
+- An **obligation** moves liquidity only when cash moved (a loan given or
+  received) and on every **repayment**.
+- The **finance dashboard** shows the same liquidity total and owed-to-us /
+  owed-by-us figures as their own pages; a **customer page** shows that
+  customer's open balance.
+- The transaction form shows cash available in the payout currency and warns
+  when the payout exceeds it.
+- **Price alerts** are checked on every rate change in /admin and by the daily
+  cron. **Favourites** are stored on the visitor's own device.
 
 ## Run locally
 

@@ -21,5 +21,30 @@ service cloud.firestore {
     match /transactions/{doc} {
       allow read, write: if request.auth != null;
     }
+    match /obligations/{doc} {
+      allow read, write: if request.auth != null;
+    }
+    match /movements/{doc} {
+      allow read, write: if request.auth != null;
+    }
+    // Sent in by site visitors: anyone may CREATE one well-formed record,
+    // only staff can read, change or delete them.
+    match /alerts/{doc} {
+      allow create: if request.resource.data.status == "active"
+        && request.resource.data.target is number
+        && request.resource.data.whatsapp is string
+        && request.resource.data.whatsapp.size() <= 30
+        && request.resource.data.name.size() <= 80
+        && request.resource.data.email.size() <= 120;
+      allow read, update, delete: if request.auth != null;
+    }
+    match /feedback/{doc} {
+      allow create: if request.resource.data.status == "new"
+        && request.resource.data.message is string
+        && request.resource.data.message.size() <= 2000
+        && request.resource.data.name.size() <= 80
+        && request.resource.data.contact.size() <= 120;
+      allow read, update, delete: if request.auth != null;
+    }
   }
 }

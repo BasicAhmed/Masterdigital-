@@ -5,6 +5,8 @@ import { ArrowLeftRight, BadgePercent, Banknote, Download, Plus, TrendingUp, Use
 import { CURRENCIES, type CurrencyCode } from "@/lib/currencies";
 import { fmt, fmtPct, fmtUsd, todayStr } from "@/lib/format";
 import { downloadCsv, STATUS_LABEL, type TxStatus } from "@/lib/data";
+import { positions } from "@/lib/books";
+import { toUsd } from "@/lib/calc";
 import { customerStats, dailySeries, groupBy, inRange, monthlySeries, periodRange, PERIODS, totals, type PeriodKey } from "@/lib/stats";
 import type { AdminData } from "./AdminApp";
 import { Empty, Panel, RankBars, Stat } from "./ui";
@@ -68,8 +70,12 @@ function DailyBars({ series }: { series: { date: string; profit: number; volume:
   );
 }
 
-export default function FinanceTab({ data, goTo }: { data: AdminData; goTo: (t: "transactions" | "customers" | "rates") => void }) {
-  const { txs, customers } = data;
+export default function FinanceTab({ data }: { data: AdminData }) {
+  const { txs, customers, goTo, balances, obligations, usd } = data;
+  const liquidityUsd = balances.reduce((s, b) => s + b.usd, 0);
+  const owed = positions(obligations);
+  const owedToUs = owed.reduce((s, p) => s + toUsd(p.receivable, p.currency, usd), 0);
+  const weOwe = owed.reduce((s, p) => s + toUsd(p.payable, p.currency, usd), 0);
   const [period, setPeriod] = useState<PeriodKey>("month");
   const [custom, setCustom] = useState({ from: "", to: "" });
 
@@ -155,6 +161,25 @@ export default function FinanceTab({ data, goTo }: { data: AdminData; goTo: (t: 
           </p>
           <p className="mt-1 text-[11px] text-subtle">{delta(month.profit, lastMonth.profit)}</p>
         </div>
+      </div>
+
+      {/* Position right now: cash on hand and what is owed either way — same figures as their own pages */}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <button onClick={() => goTo("liquidity")} className="card-sm p-4 text-right transition-colors hover:border-primary/60">
+          <p className="text-xs font-medium text-muted">السيولة المتاحة</p>
+          <p className="num mt-1.5 text-2xl font-bold text-ink" dir="ltr">{fmtUsd(liquidityUsd)}</p>
+          <p className="mt-1 text-[11px] text-subtle">مجموع أرصدة كل العملات</p>
+        </button>
+        <button onClick={() => goTo("ledger")} className="card-sm p-4 text-right transition-colors hover:border-primary/60">
+          <p className="text-xs font-medium text-muted">مستحق لنا</p>
+          <p className="num mt-1.5 text-2xl font-bold text-emerald-600 dark:text-emerald-400" dir="ltr">{fmtUsd(owedToUs)}</p>
+          <p className="mt-1 text-[11px] text-subtle">مبالغ على أفراد وشركات</p>
+        </button>
+        <button onClick={() => goTo("ledger")} className="card-sm p-4 text-right transition-colors hover:border-primary/60">
+          <p className="text-xs font-medium text-muted">مستحق علينا</p>
+          <p className="num mt-1.5 text-2xl font-bold text-red-500" dir="ltr">{fmtUsd(weOwe)}</p>
+          <p className="mt-1 text-[11px] text-subtle">الصافي: <span className="num" dir="ltr">{fmtUsd(owedToUs - weOwe)}</span></p>
+        </button>
       </div>
 
       {/* Period filter — one row, scopes everything below it */}

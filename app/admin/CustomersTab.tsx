@@ -5,6 +5,9 @@ import { ArrowRight, Check, Download, Pencil, Plus, Search, Trash2, UserPlus } f
 import { fmtPct, fmtUsd } from "@/lib/format";
 import { blankCustomer, downloadCsv, type Customer } from "@/lib/data";
 import { customerStats, groupBy, type CustomerStat } from "@/lib/stats";
+import { blankObligation, isSettled, positions, type Obligation } from "@/lib/books";
+import { fmtMoney } from "@/lib/format";
+import { ObligationForm } from "./LedgerTab";
 import { todayStr } from "@/lib/format";
 import type { AdminData } from "./AdminApp";
 import { Empty, Field, Modal, Panel, RankBars, Stat } from "./ui";
@@ -62,6 +65,9 @@ function CustomerDetail({ stat, data, onBack }: { stat: CustomerStat; data: Admi
   const [confirming, setConfirming] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const open = mine.find((t) => t.id === openId);
+  // This customer's open balances from the accounts page.
+  const owed = useMemo(() => positions(data.obligations.filter((o) => o.customerId === customer.id && !isSettled(o))), [data.obligations, customer.id]);
+  const [oblForm, setOblForm] = useState<Obligation | null>(null);
 
   return (
     <div className="space-y-4">
@@ -109,6 +115,31 @@ function CustomerDetail({ stat, data, onBack }: { stat: CustomerStat; data: Admi
         <Stat label="الربح من العميل" value={fmtUsd(stat.profit)} sub={`هامش ${fmtPct(stat.margin)}`} tone="good" />
       </div>
 
+      <div className="card-sm flex flex-wrap items-center justify-between gap-3 p-4">
+        <div>
+          <p className="text-xs font-medium text-muted">الحساب مع العميل</p>
+          {owed.length === 0 ? (
+            <p className="mt-1 text-sm text-ink">لا توجد مبالغ مستحقة بينكم.</p>
+          ) : (
+            <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+              {owed.map((p) => (
+                <span key={p.currency} className={`num font-bold ${p.net >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"}`} dir="ltr">
+                  {p.net >= 0 ? "لنا" : "علينا"} {fmtMoney(Math.abs(p.net), p.currency)} {p.currency}
+                </span>
+              ))}
+            </p>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => setOblForm({ ...blankObligation(), party: customer.name, customerId: customer.id })} className="btn-ghost px-3.5 py-2 text-xs">
+            <Plus size={13} /> مستحق جديد
+          </button>
+          <button onClick={() => data.goTo("ledger")} className="btn-ghost px-3.5 py-2 text-xs">
+            صفحة الحسابات
+          </button>
+        </div>
+      </div>
+
       {routes.length > 0 && (
         <Panel title="أكثر المسارات استخداماً">
           <RankBars rows={routes.map((r) => ({ key: r.key, label: <span className="font-mono text-xs" dir="ltr">{r.label}</span>, value: r.count, display: `${r.count}`, sub: fmtUsd(r.volume) }))} />
@@ -119,6 +150,7 @@ function CustomerDetail({ stat, data, onBack }: { stat: CustomerStat; data: Admi
       {mine.length ? <TxTable txs={mine} hideCustomer onOpen={(t) => setOpenId(t.id)} /> : <Empty title="لا توجد معاملات لهذا العميل بعد" />}
 
       {editing && <CustomerForm initial={customer} data={data} onClose={() => setEditing(false)} />}
+      {oblForm && <ObligationForm initial={oblForm} data={data} onClose={() => setOblForm(null)} />}
       {open && <TxDetail tx={open} data={data} onClose={() => setOpenId(null)} />}
     </div>
   );

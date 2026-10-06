@@ -10,6 +10,7 @@ import WhyChoose from "@/components/WhyChoose";
 import HowItWorks from "@/components/HowItWorks";
 import FAQ from "@/components/FAQ";
 import Contact from "@/components/Contact";
+import Suggestions from "@/components/Suggestions";
 import Footer from "@/components/Footer";
 
 export const revalidate = 60; // re-fetch rates at most once a minute
@@ -26,6 +27,7 @@ export default async function Home() {
       <WhyChoose />
       <HowItWorks />
       <FAQ />
+      <Suggestions />
       <Contact />
       <Footer />
       <WhatsAppFab />

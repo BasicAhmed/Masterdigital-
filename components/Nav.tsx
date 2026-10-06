@@ -11,6 +11,7 @@ const LINKS = [
   { href: "#why", label: "لماذا ماستر" },
   { href: "#how", label: "كيف تعمل" },
   { href: "#faq", label: "الأسئلة الشائعة" },
+  { href: "#feedback", label: "اقتراحات وشكاوى" },
   { href: "#contact", label: "تواصل معنا" },
 ];
 

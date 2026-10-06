@@ -14,6 +14,7 @@ import { getRateHistory, type RateHistoryPoint } from "@/lib/rateHistory";
 import { buildAvailabilityMessage, buildOrderMessage } from "@/lib/whatsapp";
 import { useContact } from "./ContactContext";
 import RateHistoryChart from "./RateHistoryChart";
+import CalcExtras from "./CalcExtras";
 
 type Mode = "send" | "receive";
 
@@ -568,6 +569,7 @@ export default function Calculator({ rates, disabledFlows = [] }: { rates: RateR
               <p className="mt-2 text-center text-[11px] text-subtle">
                 يفتح واتساب ورسالتك جاهزة بكل التفاصيل — ما عليك إلا ترسلها.
               </p>
+              {toCurrency && <CalcExtras from={fromCode} to={toCurrency.code} rate={rate?.rate} multiply={usesMultiply} />}
             </div>
     </div>
   );
