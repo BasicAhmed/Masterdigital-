@@ -25,10 +25,6 @@ export const CURRENCIES: Record<CurrencyCode, CurrencyInfo> = {
  *  each other is 1 until it is changed by hand in /admin. */
 export const USD_PEGGED: CurrencyCode[] = ["USDT", "USD", "USDSS"];
 
-/** Units of `code` per 1 USD from a live FX table (open.er-api style). */
-export function usdRateFor(code: CurrencyCode, usdRates: Record<string, number>): number | undefined {
-  return USD_PEGGED.includes(code) ? 1 : usdRates[code];
-}
 
 export interface CurrencyPair {
   a: CurrencyCode;

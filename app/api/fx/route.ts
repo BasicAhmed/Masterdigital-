@@ -1,19 +1,17 @@
 import { NextResponse } from "next/server";
-import { fetchCombinedUsdRates } from "@/lib/fx";
+import { fetchMarketData } from "@/lib/fx";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
 /** Same-origin relay for the admin panel's "update now" button — avoids
- *  browser CORS issues hitting open.er-api.com / Binance directly. No
- *  secret needed, it's read-only public rate data. */
+ *  browser CORS issues hitting Binance / open.er-api.com directly. Returns
+ *  Binance's buy and sell side for every currency plus the regular FX table.
+ *  No secret needed, it's read-only public rate data. */
 export async function GET() {
   try {
-    const { rates, sdgError } = await fetchCombinedUsdRates();
-    return NextResponse.json({ rates, sdgError });
+    return NextResponse.json(await fetchMarketData());
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
-      { status: 502 }
-    );
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 502 });
   }
 }

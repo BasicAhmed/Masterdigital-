@@ -1,17 +1,11 @@
 import { collection, getDocs, getDoc, doc, setDoc, deleteField, serverTimestamp } from "firebase/firestore";
 import { db, firebaseEnabled } from "./firebase";
-import { PAIRS, pairKey, isForwardDirection, isMultiplyCorridor, usdRateFor, type CurrencyCode } from "./corridors";
+import { PAIRS, pairKey, isForwardDirection, isMultiplyCorridor, type CurrencyCode } from "./corridors";
+import { buildUsdtPrices, pairMarketPrices, type MarketData, type UsdtPrice, type UsdtPrices } from "./fx";
 import { getMarginPercent } from "./settings";
 import { roundForDisplay } from "./format";
 import { appendRateHistory } from "./rateHistory";
 import seed from "@/data/rates.seed.json";
-
-/** For SDG pairs only: the raw USDT/SDG data the marketPrice was derived
- *  from, so it can be shown in /admin for verification. */
-export interface SdgSourceDetail {
-  usdtToSdg: number; // the average used
-  prices: number[]; // the individual Binance P2P offers averaged
-}
 
 export interface RateRow {
   from: CurrencyCode;
@@ -21,7 +15,6 @@ export interface RateRow {
   marginPercent: number; // the margin actually applied to THIS DIRECTION (its own override or the global default)
   marginOverride?: number; // set only if this direction has a custom margin; absent = using the global default
   updatedAt: string | null;
-  sdgSource?: SdgSourceDetail;
 }
 
 /** Applies a margin to a pair's single market price to get the
@@ -56,8 +49,7 @@ function rowsForPair(
   marketPrice: number,
   defaultMargin: number,
   overrides: PairMargins,
-  updatedAt: string | null,
-  sdgSource?: SdgSourceDetail
+  updatedAt: string | null
 ): RateRow[] {
   const forward = overrides.forward ?? defaultMargin;
   const reverse = overrides.reverse ?? defaultMargin;
@@ -70,7 +62,6 @@ function rowsForPair(
       marginPercent: forward,
       marginOverride: overrides.forward,
       updatedAt,
-      sdgSource,
     },
     {
       from: to,
@@ -80,7 +71,6 @@ function rowsForPair(
       marginPercent: reverse,
       marginOverride: overrides.reverse,
       updatedAt,
-      sdgSource,
     },
   ];
 }
@@ -118,7 +108,6 @@ export async function getRatesWithMargin(): Promise<{ rates: RateRow[]; defaultM
         marketPrice: number;
         margins: PairMargins;
         updatedAt: string | null;
-        sdgSource?: SdgSourceDetail;
       }
     >();
     snap.forEach((d) => {
@@ -130,10 +119,6 @@ export async function getRatesWithMargin(): Promise<{ rates: RateRow[]; defaultM
           reverse: typeof data.marginReverse === "number" ? data.marginReverse : undefined,
         },
         updatedAt: data.updatedAt?.toDate?.().toISOString?.() ?? null,
-        sdgSource:
-          typeof data.sdgUsdtToSdg === "number" && Array.isArray(data.sdgPrices)
-            ? { usdtToSdg: data.sdgUsdtToSdg, prices: data.sdgPrices }
-            : undefined,
       });
     });
 
@@ -151,8 +136,7 @@ export async function getRatesWithMargin(): Promise<{ rates: RateRow[]; defaultM
         marketPrice,
         defaultMargin,
         entry?.margins ?? {},
-        entry?.updatedAt ?? null,
-        entry?.sdgSource
+        entry?.updatedAt ?? null
       );
     });
     return { rates, defaultMargin };
@@ -171,15 +155,12 @@ export async function getRates(): Promise<RateRow[]> {
 
 /** Writes one PAIR's market price (not a direction — a pair has exactly one).
  *  Called from the /admin panel only. Pass either side's currencies; it
- *  always resolves and stores under the pair's canonical key. `sdgSource`
- *  is only meaningful for SDG pairs — stores the raw Binance P2P data the
- *  price came from, so /admin can show exactly what was used. Does NOT
+ *  always resolves and stores under the pair's canonical key. Does NOT
  *  touch the pair's margin override — use setRouteMargin for that. */
 export async function setMarketPrice(
   from: CurrencyCode,
   to: CurrencyCode,
-  marketPrice: number,
-  sdgSource?: SdgSourceDetail
+  marketPrice: number
 ) {
   if (!firebaseEnabled || !db) {
     throw new Error("Firebase is not configured — see .env.example.");
@@ -192,54 +173,9 @@ export async function setMarketPrice(
       to,
       marketPrice,
       updatedAt: serverTimestamp(),
-      ...(sdgSource ? { sdgUsdtToSdg: sdgSource.usdtToSdg, sdgPrices: sdgSource.prices } : {}),
     },
     { merge: true }
   );
-}
-
-/** Manually overrides the shared USDT/SDG price used across every SDG
- *  pair (e.g. Ahmed found a cheaper source than Binance P2P that day).
- *  Rescales each SDG pair's stored marketPrice proportionally — the ratio
- *  of new-to-old USDT/SDG applies equally to all of them, since marketPrice
- *  = usdtToSdg / (other currency's USD rate), and the other currency's rate
- *  hasn't changed. Only rescales pairs that already have a baseline
- *  (sdgUsdtToSdg from a previous auto-update) — a pair that's never been
- *  auto-updated yet has nothing to rescale from, so it's left alone. */
-export async function setSdgUsdtOverride(newUsdtToSdg: number): Promise<void> {
-  if (!firebaseEnabled || !db) {
-    throw new Error("Firebase is not configured — see .env.example.");
-  }
-  const sdgPairs = PAIRS.filter((p) => p.a === "SDG" || p.b === "SDG");
-
-  const jobs = sdgPairs.map(async ({ a, b }) => {
-    const key = pairKey(a, b);
-    const snap = await getDoc(doc(db!, "rates", key));
-    if (!snap.exists()) return;
-    const data = snap.data();
-    const oldMarketPrice = data.marketPrice;
-    const oldUsdtToSdg = data.sdgUsdtToSdg;
-    if (typeof oldMarketPrice !== "number" || typeof oldUsdtToSdg !== "number" || oldUsdtToSdg === 0) {
-      return; // no baseline yet — leave this pair untouched
-    }
-    const newMarketPrice = oldMarketPrice * (newUsdtToSdg / oldUsdtToSdg);
-    await setDoc(
-      doc(db!, "rates", key),
-      {
-        from: a,
-        to: b,
-        marketPrice: newMarketPrice,
-        updatedAt: serverTimestamp(),
-        sdgUsdtToSdg: newUsdtToSdg,
-        sdgPrices: [],
-        source: "manual-override",
-      },
-      { merge: true }
-    );
-    await appendRateHistory(a, b, newMarketPrice);
-  });
-
-  await Promise.all(jobs);
 }
 
 /** Sets (or clears) the margin override of ONE DIRECTION (from → to),
@@ -255,56 +191,82 @@ export async function setRouteMargin(from: CurrencyCode, to: CurrencyCode, perce
   await setDoc(doc(db, "rates", key), { [field]: percent === null ? deleteField() : percent }, { merge: true });
 }
 
-export interface FxUpdateResult {
-  updated: { from: CurrencyCode; to: CurrencyCode; marketPrice: number; sdgSource?: SdgSourceDetail }[];
-  skipped: string[];
+/** The saved price of every currency (units per 1 USDT) with the Binance
+ *  ads behind it. Empty before the first update. */
+export async function getUsdtPrices(): Promise<UsdtPrices> {
+  if (!firebaseEnabled || !db) return {};
+  try {
+    const snap = await getDoc(doc(db, "settings", "usdtPrices"));
+    return (snap.exists() ? snap.data().prices : null) ?? {};
+  } catch {
+    return {};
+  }
 }
 
-/** Client-side "update now" — same math and same sources as the daily cron
- *  (app/api/cron/update-rates), but runs on demand from a logged-in admin
- *  session using the normal authenticated client SDK instead of the service
- *  account. Pulls live rates via the same-origin /api/fx relay (avoids
- *  browser CORS issues) — that includes SDG via Binance P2P now, so every
- *  pair updates the same way; the raw SDG offers get stored too. Only
- *  touches market prices, never margin overrides. Returns each updated
- *  pair's new marketPrice/sdgSource so the caller can patch its own state
- *  directly instead of re-fetching the whole collection afterward. */
+export interface PairUpdate {
+  from: CurrencyCode;
+  to: CurrencyCode;
+  marketPrice: number;
+}
+
+/** Writes new pair prices + today's history point for each. */
+async function writePairs(pairs: { a: CurrencyCode; b: CurrencyCode; marketPrice: number }[]): Promise<PairUpdate[]> {
+  await Promise.all(
+    pairs.map(({ a, b, marketPrice }) =>
+      Promise.all([setMarketPrice(a, b, marketPrice), appendRateHistory(a, b, marketPrice)])
+    )
+  );
+  return pairs.map(({ a, b, marketPrice }) => ({ from: a, to: b, marketPrice }));
+}
+
+export interface FxUpdateResult {
+  updated: PairUpdate[];
+  prices: UsdtPrices;
+  problems: string[];
+}
+
+/** "Update now" in /admin — same rules as the daily cron: Binance buy and
+ *  sell for every currency (first 2 ads skipped, next 5 averaged), price =
+ *  the middle of the two, then every pair rebuilt from those prices. Only
+ *  touches prices, never margins. */
 export async function updateRatesFromLiveFx(): Promise<FxUpdateResult> {
+  if (!firebaseEnabled || !db) throw new Error("Firebase is not configured — see .env.example.");
   const res = await fetch("/api/fx", { cache: "no-store" });
   const data = await res.json();
-  if (!res.ok || !data.rates) {
-    throw new Error(data?.error ?? "تعذر جلب أسعار الصرف الحالية");
-  }
-  const usdRates = data.rates as Record<string, number>;
-  const sdgSource: SdgSourceDetail | undefined = data.sdgDetail
-    ? { usdtToSdg: data.sdgDetail.usdtToSdg, prices: data.sdgDetail.prices }
-    : undefined;
-  const rateFor = (code: CurrencyCode) => usdRateFor(code, usdRates);
+  if (!res.ok || !data.binance) throw new Error(data?.error ?? "تعذر جلب الأسعار من Binance");
+  const prev = await getUsdtPrices();
+  const { prices, problems } = buildUsdtPrices(prev, data as MarketData);
+  await setDoc(doc(db, "settings", "usdtPrices"), { prices, updatedAt: serverTimestamp() });
+  const updated = await writePairs(pairMarketPrices(prices));
+  return { updated, prices, problems };
+}
 
-  const updated: FxUpdateResult["updated"] = [];
-  const skipped: string[] = [];
-
-  const jobs = PAIRS.map(async ({ a, b }) => {
-    const key = pairKey(a, b);
-    const rateA = rateFor(a);
-    const rateB = rateFor(b);
-    if (!rateA || !rateB) {
-      skipped.push(key);
-      return;
-    }
-    const marketPrice = rateA / rateB;
-    const involvesSdg = a === "SDG" || b === "SDG";
-    const pairSdgSource = involvesSdg ? sdgSource : undefined;
-    await Promise.all([
-      setMarketPrice(a, b, marketPrice, pairSdgSource),
-      appendRateHistory(a, b, marketPrice),
-    ]);
-    updated.push({ from: a, to: b, marketPrice, sdgSource: pairSdgSource });
-  });
-
-  await Promise.all(jobs);
-
-  return { updated, skipped };
+/** Replaces ONE currency's price by hand (e.g. a better rate was found that
+ *  day) and rebuilds every pair that includes it. The Binance figures stay
+ *  saved next to it for reference. The next update (daily or "update now")
+ *  takes the Binance price again, except for USD cash / USD South Sudan,
+ *  which keep a typed price until it is changed. */
+export async function setUsdtPriceManual(
+  code: CurrencyCode,
+  used: number
+): Promise<{ updated: PairUpdate[]; prices: UsdtPrices }> {
+  if (!firebaseEnabled || !db) throw new Error("Firebase is not configured — see .env.example.");
+  if (!(used > 0)) throw new Error("السعر لازم يكون أكبر من صفر");
+  const prices = await getUsdtPrices();
+  const before = prices[code];
+  const entry: UsdtPrice = {
+    used,
+    buy: before?.buy ?? null,
+    sell: before?.sell ?? null,
+    buyAds: before?.buyAds ?? [],
+    sellAds: before?.sellAds ?? [],
+    source: "manual",
+    at: new Date().toISOString(),
+  };
+  const next = { ...prices, [code]: entry };
+  await setDoc(doc(db, "settings", "usdtPrices"), { prices: next, updatedAt: serverTimestamp() });
+  const updated = await writePairs(pairMarketPrices(next, code));
+  return { updated, prices: next };
 }
 
 /** Converts an amount between any two of Master Digital's currencies. Uses the

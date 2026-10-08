@@ -1,26 +1,35 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeftRight, Power, RefreshCw } from "lucide-react";
+import { ArrowLeftRight, ChevronDown, Pencil, Power, RefreshCw } from "lucide-react";
 import {
   setRouteMargin,
-  setSdgUsdtOverride,
   computeRate,
+  getUsdtPrices,
+  setUsdtPriceManual,
   updateRatesFromLiveFx,
+  type PairUpdate,
   type RateRow,
 } from "@/lib/rates";
+import { SKIP_ADS, SOURCE_LABEL, USE_ADS, type PriceSource, type UsdtPrices } from "@/lib/fx";
 import { formatSmart } from "@/lib/format";
 import { formatRelativeTime } from "@/lib/relativeTime";
 import { flowKey, setDisabledFlows, setMarginPercent } from "@/lib/settings";
-import { PAIRS, CURRENCIES, type CurrencyCode } from "@/lib/corridors";
+import { PAIRS, CURRENCIES, CURRENCY_ORDER, type CurrencyCode } from "@/lib/corridors";
 import { demoMode } from "@/lib/store";
 
-/** The rates screen from the template, unchanged in how it works — one market
- *  price per pair, "update now" from live FX, the USDT/SDG override, the
- *  global margin and the per-direction on/off switches — with ONE difference:
- *  the margin is set per DIRECTION instead of per pair, so USDT → SDG and
+/** The rates screen: one USDT price per currency (from Binance P2P, editable
+ *  by hand) that every pair is built from, "update now", the global margin,
+ *  and per-DIRECTION margins and on/off switches, so USDT → SDG and
  *  SDG → USDT each earn their own percentage. */
+
+const SOURCE_TONE: Record<PriceSource, string> = {
+  binance: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+  manual: "bg-primary/15 text-primary",
+  fx: "bg-red-500/10 text-red-500",
+  peg: "bg-surface2 text-muted",
+};
 
 function SmallButton({ onClick, busy, children }: { onClick: () => void; busy?: boolean; children: React.ReactNode }) {
   return (
@@ -73,10 +82,14 @@ export default function RatesTab({ state, onError }: { state: RatesState; onErro
   const [saving, setSaving] = useState<string | null>(null);
   const [fxUpdating, setFxUpdating] = useState(false);
   const [fxMessage, setFxMessage] = useState<string | null>(null);
-  const [sdgOverrideInput, setSdgOverrideInput] = useState("");
-  const [savingSdgOverride, setSavingSdgOverride] = useState(false);
+  const [prices, setPrices] = useState<UsdtPrices>({});
+  const [priceInputs, setPriceInputs] = useState<Record<string, string>>({});
+  const [savingPrice, setSavingPrice] = useState<CurrencyCode | null>(null);
+  const [openAds, setOpenAds] = useState<CurrencyCode | null>(null);
 
-  const currentSdgUsdt = rates.find((r) => (r.from === "SDG" || r.to === "SDG") && r.sdgSource)?.sdgSource?.usdtToSdg;
+  useEffect(() => {
+    getUsdtPrices().then(setPrices);
+  }, []);
   const lastUpdated = rates
     .map((r) => r.updatedAt)
     .filter((d): d is string => !!d)
@@ -84,6 +97,12 @@ export default function RatesTab({ state, onError }: { state: RatesState; onErro
     .pop();
   const totalDirections = PAIRS.length * 2;
   const activeDirections = totalDirections - disabled.length;
+
+  /** Puts freshly written pair prices on screen — no refetch. */
+  function applyPairs(updated: PairUpdate[]) {
+    const stamp = new Date().toISOString();
+    for (const u of updated) patchRatePair(u.from, u.to, { marketPrice: u.marketPrice, updatedAt: stamp });
+  }
 
   /** Applies a market-price change to BOTH directions of a pair — no refetch. */
   function patchRatePair(a: string, b: string, updates: Partial<RateRow>) {
@@ -176,45 +195,35 @@ export default function RatesTab({ state, onError }: { state: RatesState; onErro
     setFxUpdating(true);
     setFxMessage(null);
     try {
-      const { updated, skipped } = await updateRatesFromLiveFx();
-      const stamp = new Date().toISOString();
-      for (const u of updated) {
-        patchRatePair(u.from, u.to, { marketPrice: u.marketPrice, sdgSource: u.sdgSource, updatedAt: stamp });
-      }
-      setFxMessage(
-        skipped.length > 0 ? `✅ ${updated.length} تحديث — تعذر: ${skipped.join(", ")}` : `✅ تم تحديث ${updated.length} زوج`
-      );
+      const { updated, prices: next, problems } = await updateRatesFromLiveFx();
+      applyPairs(updated);
+      setPrices(next);
+      setPriceInputs({});
+      setFxMessage(`✅ تم تحديث ${updated.length} زوج${problems.length ? ` — ملاحظات: ${problems.join(" · ")}` : ""}`);
     } catch (err) {
       setFxMessage(`❌ ${err instanceof Error ? err.message : String(err)}`);
     }
     setFxUpdating(false);
   }
 
-  async function saveSdgOverride() {
-    const val = parseFloat(sdgOverrideInput);
-    if (!val) return;
-    setSavingSdgOverride(true);
+  async function savePrice(code: CurrencyCode) {
+    const val = parseFloat(priceInputs[code] ?? "");
+    if (!(val > 0)) return;
+    setSavingPrice(code);
     onError(null);
     try {
-      await setSdgUsdtOverride(val);
-      setRates((prev) =>
-        prev.map((r) => {
-          if ((r.from !== "SDG" && r.to !== "SDG") || !r.sdgSource) return r;
-          const newMarketPrice = r.marketPrice * (val / r.sdgSource.usdtToSdg);
-          return {
-            ...r,
-            marketPrice: newMarketPrice,
-            rate: computeRate(r.from, r.to, newMarketPrice, r.marginPercent),
-            sdgSource: { usdtToSdg: val, prices: [] },
-            updatedAt: new Date().toISOString(),
-          };
-        })
-      );
-      setSdgOverrideInput("");
+      const { updated, prices: next } = await setUsdtPriceManual(code, val);
+      applyPairs(updated);
+      setPrices(next);
+      setPriceInputs((prev) => {
+        const n = { ...prev };
+        delete n[code];
+        return n;
+      });
     } catch (err) {
       onError(err instanceof Error ? err.message : String(err));
     }
-    setSavingSdgOverride(false);
+    setSavingPrice(null);
   }
 
   return (
@@ -242,7 +251,7 @@ export default function RatesTab({ state, onError }: { state: RatesState; onErro
         </div>
         {fxMessage && <p className="border-t border-border/60 px-5 py-2.5 text-xs text-muted">{fxMessage}</p>}
 
-        <div className="grid gap-4 border-t border-border/60 p-5 sm:grid-cols-2">
+        <div className="border-t border-border/60 p-5">
           <div>
             <label className="mb-1.5 block text-xs font-medium text-subtle">الهامش العام</label>
             <div className="flex gap-2" dir="ltr">
@@ -264,30 +273,124 @@ export default function RatesTab({ state, onError }: { state: RatesState; onErro
               </SmallButton>
             </div>
           </div>
-
-          {currentSdgUsdt !== undefined && (
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-subtle">
-                سعر USDT/SDG — الحالي{" "}
-                <span className="font-mono font-semibold text-ink">{currentSdgUsdt.toFixed(2)}</span>
-              </label>
-              <div className="flex gap-2" dir="ltr">
-                <input
-                  type="number"
-                  step="any"
-                  inputMode="decimal"
-                  value={sdgOverrideInput}
-                  onChange={(e) => setSdgOverrideInput(e.target.value)}
-                  placeholder="سعر جديد"
-                  className="field flex-1 px-3.5 py-2.5 font-mono text-sm font-semibold"
-                />
-                <SmallButton onClick={saveSdgOverride} busy={savingSdgOverride}>
-                  تطبيق
-                </SmallButton>
-              </div>
-            </div>
-          )}
         </div>
+      </div>
+
+      {/* One USDT price per currency — every pair is built from these */}
+      <div className="card overflow-hidden p-0">
+        <div className="border-b border-border/60 p-5">
+          <p className="font-display text-base font-bold text-ink">سعر USDT لكل عملة</p>
+          <p className="mt-1 text-[11px] leading-relaxed text-muted">
+            من Binance P2P: نتخطى أول {SKIP_ADS} إعلانات (المثبتة) ونحسب متوسط الـ {USE_ADS} اللي بعدها، للشراء وللبيع. السعر
+            المستخدم = منتصف الاتنين، ومنه بتتحسب كل الأسعار. تقدر تكتب سعر بنفسك لأي عملة.
+          </p>
+        </div>
+        <ul className="divide-y divide-border/50">
+          {CURRENCY_ORDER.map((code) => {
+            const p = prices[code];
+            const c = CURRENCIES[code];
+            const typed = priceInputs[code];
+            const hasAds = !!p && (p.buyAds.length > 0 || p.sellAds.length > 0);
+            return (
+              <li key={code} className="p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="flex items-center gap-2 text-sm font-semibold text-ink">
+                    <span className="text-lg">{c.flag}</span>
+                    <span className="font-mono" dir="ltr">{code}</span>
+                    <span className="text-xs font-normal text-muted">{c.name}</span>
+                  </p>
+                  {p ? (
+                    <span className={`chip ${SOURCE_TONE[p.source]}`}>{SOURCE_LABEL[p.source]}</span>
+                  ) : (
+                    <span className="chip bg-surface2 text-subtle">لم يُحدَّث</span>
+                  )}
+                </div>
+
+                {p && (
+                  <>
+                    <p className="mt-2 font-mono text-lg font-bold text-primary" dir="ltr">
+                      1 USDT = {formatSmart(p.used)} {code}
+                    </p>
+                    <p className="flex flex-wrap gap-x-3 text-[11px] text-muted">
+                      {p.buy != null && (
+                        <span>
+                          شراء: <b className="font-mono text-ink" dir="ltr">{formatSmart(p.buy)}</b>
+                        </span>
+                      )}
+                      {p.sell != null && (
+                        <span>
+                          بيع: <b className="font-mono text-ink" dir="ltr">{formatSmart(p.sell)}</b>
+                        </span>
+                      )}
+                      <span>{formatRelativeTime(p.at)}</span>
+                    </p>
+                    {p.source === "manual" && p.buy != null && (
+                      <p className="mt-0.5 text-[11px] text-subtle">
+                        سعر يدوي — Binance كان{" "}
+                        <span className="font-mono" dir="ltr">
+                          {formatSmart(p.sell != null ? (p.buy + p.sell) / 2 : p.buy)}
+                        </span>
+                      </p>
+                    )}
+                    {hasAds && (
+                      <button
+                        onClick={() => setOpenAds(openAds === code ? null : code)}
+                        className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-primary"
+                      >
+                        الإعلانات المستخدمة
+                        <ChevronDown size={12} className={openAds === code ? "rotate-180" : ""} />
+                      </button>
+                    )}
+                    {openAds === code && hasAds && (
+                      <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
+                        {(
+                          [
+                            ["شراء", p.buyAds],
+                            ["بيع", p.sellAds],
+                          ] as const
+                        ).map(([label, ads]) => (
+                          <div key={label} className="rounded-xl bg-surface2 p-2.5">
+                            <p className="mb-1 font-semibold text-muted">{label}</p>
+                            {ads.length ? (
+                              <ol className="space-y-0.5 font-mono text-ink" dir="ltr">
+                                {ads.map((v, i) => (
+                                  <li key={i}>
+                                    #{i + SKIP_ADS + 1} · {formatSmart(v)}
+                                  </li>
+                                ))}
+                              </ol>
+                            ) : (
+                              <p className="text-subtle">—</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                <div className="mt-2.5 flex gap-2" dir="ltr">
+                  <div className="relative flex-1">
+                    <Pencil size={12} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-subtle" />
+                    <input
+                      type="number"
+                      step="any"
+                      inputMode="decimal"
+                      value={typed ?? ""}
+                      onChange={(e) => setPriceInputs((prev) => ({ ...prev, [code]: e.target.value }))}
+                      placeholder={p ? `سعر يدوي (${formatSmart(p.used)})` : "سعر يدوي"}
+                      aria-label={`سعر USDT بالـ ${code}`}
+                      className="field py-2 pl-8 pr-3 font-mono text-sm"
+                    />
+                  </div>
+                  <SmallButton onClick={() => savePrice(code)} busy={savingPrice === code}>
+                    حفظ
+                  </SmallButton>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       </div>
 
       {/* Active flows summary */}
@@ -321,7 +424,6 @@ export default function RatesTab({ state, onError }: { state: RatesState; onErro
           const fromC = CURRENCIES[a];
           const toC = CURRENCIES[b];
           const pairId = `${a}_${b}`;
-          const isSdg = a === "SDG" || b === "SDG";
           const bothOff = disabled.includes(flowKey(a, b)) && disabled.includes(flowKey(b, a));
           const dirty = marginInputs[flowKey(a, b)] !== undefined || marginInputs[flowKey(b, a)] !== undefined;
 
@@ -346,12 +448,6 @@ export default function RatesTab({ state, onError }: { state: RatesState; onErro
 
               <p className="mt-2 text-[11px] text-subtle" dir="ltr">
                 Market: 1 {b} = <span className="font-mono font-semibold text-muted">{formatSmart(row.marketPrice)}</span> {a}
-                {isSdg && row.sdgSource && (
-                  <>
-                    {" · "}USDT → SDG{" "}
-                    <span className="font-mono font-semibold text-muted">{row.sdgSource.usdtToSdg.toFixed(2)}</span>
-                  </>
-                )}
               </p>
 
               {/* Each direction: rate + on/off + ITS OWN margin */}

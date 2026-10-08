@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebaseAdmin";
-import { PAIRS, usdRateFor, type CurrencyCode } from "@/lib/corridors";
-import { fetchCombinedUsdRates } from "@/lib/fx";
+import { PAIRS, type CurrencyCode } from "@/lib/corridors";
+import { buildUsdtPrices, fetchMarketData, pairMarketPrices, type UsdtPrices } from "@/lib/fx";
 import { mergeHistoryEntry, todayDateStr, type RateHistoryPoint } from "@/lib/rateHistory";
 import { computeRate } from "@/lib/rates";
 import { isReached } from "@/lib/alerts";
@@ -10,6 +10,7 @@ import { formatRate } from "@/lib/format";
 import type { Firestore } from "firebase-admin/firestore";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
@@ -17,14 +18,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  let usdRates: Record<string, number>;
-  let sdgError: string | undefined;
-  let sdgDetail: { usdtToSdg: number; prices: number[] } | undefined;
+  let data;
   try {
-    const result = await fetchCombinedUsdRates();
-    usdRates = result.rates;
-    sdgError = result.sdgError;
-    sdgDetail = result.sdgDetail;
+    data = await fetchMarketData();
   } catch (err) {
     return NextResponse.json(
       { ok: false, error: err instanceof Error ? err.message : String(err) },
@@ -33,49 +29,29 @@ export async function GET(request: Request) {
   }
 
   const db = getAdminDb();
+  // One price per currency (units per 1 USDT), saved so /admin can show
+  // exactly which Binance ads were used — then every pair is built from it.
+  const pricesRef = db.collection("settings").doc("usdtPrices");
+  const prevSnap = await pricesRef.get();
+  const prev: UsdtPrices = (prevSnap.exists ? prevSnap.data()?.prices : null) ?? {};
+  const { prices, problems } = buildUsdtPrices(prev, data);
+  await pricesRef.set({ prices, updatedAt: new Date() });
+
   const updated: { pair: string; marketPrice: number }[] = [];
-  const skipped: { pair: string; reason: string }[] = [];
-
-  const jobs = PAIRS.map(async ({ a, b }) => {
+  const jobs = pairMarketPrices(prices).map(async ({ a, b, marketPrice }) => {
     const key = `${a}_${b}`;
-    const involvesSdg = a === "SDG" || b === "SDG";
-
-    const rateA = usdRateFor(a, usdRates);
-    const rateB = usdRateFor(b, usdRates);
-    if (!rateA || !rateB) {
-      skipped.push({
-        pair: key,
-        reason: involvesSdg ? sdgError ?? "SDG rate unavailable" : "missing FX data for this pair",
-      });
-      return;
-    }
-
-    // marketPrice = units of `a` per 1 unit of `b` = (a per USD) / (b per USD).
-    const marketPrice = rateA / rateB;
-
     const historyRef = db.collection("rateHistory").doc(key);
     const [, historySnap] = await Promise.all([
       db.collection("rates").doc(key).set(
-        {
-          from: a,
-          to: b,
-          marketPrice,
-          updatedAt: new Date(),
-          source: involvesSdg ? "auto-fx-binance-p2p" : "auto-fx",
-          ...(involvesSdg && sdgDetail
-            ? { sdgUsdtToSdg: sdgDetail.usdtToSdg, sdgPrices: sdgDetail.prices }
-            : {}),
-        },
+        { from: a, to: b, marketPrice, updatedAt: new Date(), source: "auto-binance-p2p" },
         { merge: true }
       ),
       historyRef.get(),
     ]);
     updated.push({ pair: key, marketPrice });
-
     const existing: RateHistoryPoint[] = historySnap.exists ? historySnap.data()?.entries ?? [] : [];
     await historyRef.set({ entries: mergeHistoryEntry(existing, todayDateStr(), marketPrice) });
   });
-
   await Promise.all(jobs);
 
   // Price alerts: with the fresh prices in, flag every alert whose target is now met.
@@ -86,7 +62,7 @@ export async function GET(request: Request) {
     alerts = { reached: 0, emailed: 0, error: err instanceof Error ? err.message : String(err) };
   }
 
-  return NextResponse.json({ ok: true, at: new Date().toISOString(), updated, skipped, sdgError, sdgDetail, alerts });
+  return NextResponse.json({ ok: true, at: new Date().toISOString(), prices, problems, updated: updated.length, alerts });
 }
 
 /** Works out today's customer rate for every direction (market price ×

@@ -11,11 +11,14 @@ business model.
 rate ticker, rates table, calculator (send/receive modes, 30-day history,
 share card, WhatsApp ordering), FAQ, contact.
 
-**Rates engine** — unchanged from the template: one market price per pair,
-daily cron + "update now" from live FX, SDG from Binance P2P, manual USDT/SDG
-override, global margin, per-direction on/off. **One change:** the margin
-override is per DIRECTION (`marginForward` / `marginReverse` on `rates/{a_b}`),
-so USDT → SDG and SDG → USDT earn different percentages.
+**Rates engine** — every currency has ONE price: units per 1 USDT, from
+Binance P2P (`lib/fx.ts`). For each currency the BUY and SELL ad lists are read,
+the first 2 ads are skipped (pinned / promoted), the next 5 are averaged, and the
+price used is the middle of buy and sell. USDT, USD cash and USD South Sudan are
+1:1. Any price can be typed by hand in /admin → الأسعار, which also shows the
+buy, sell and the exact ads used. Every pair = price(a) ÷ price(b). Updated by
+the daily cron and "تحديث الآن". Margins are per DIRECTION
+(`marginForward` / `marginReverse` on `rates/{a_b}`).
 
 **Management system (`/admin`)**
 
