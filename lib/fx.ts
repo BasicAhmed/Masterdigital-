@@ -1,13 +1,13 @@
 import { CURRENCY_ORDER, PAIRS, USD_PEGGED, type CurrencyCode } from "./corridors";
 
-/** Every price on the site starts from ONE number per currency: how many units
- *  of it buy 1 USDT. For the currencies below that number comes from Binance
- *  P2P, the same way for all of them: the BUY list and the SELL list are read,
- *  the first 2 ads of each are skipped (they are often pinned or promoted and
- *  not a real price), the next 5 are averaged, and the price used is the
- *  middle of the buy and sell averages. Staff can replace any currency's price
- *  by hand in /admin. Every pair's market price is then simply
- *  price(a) / price(b). */
+/** Every price on the site starts from each currency's BUY and SELL price
+ *  for 1 USDT. For the currencies below they come from Binance P2P, the same
+ *  way for all of them: the BUY list and the SELL list are read, the first 2
+ *  ads of each are skipped (often pinned or promoted, not a real price) and
+ *  the next 5 are averaged. Staff can type their own buy and sell for any
+ *  currency instead; a typed price stays until they switch back to Binance.
+ *  The price used = the average of buy and sell, and every pair's market
+ *  price is simply used(a) / used(b). */
 export const BINANCE_FIATS: CurrencyCode[] = ["SDG", "UGX", "RWF", "KES", "EGP", "SAR", "AED"];
 
 export const SKIP_ADS = 2;
@@ -41,24 +41,86 @@ export interface MarketData {
 export type PriceSource = "binance" | "manual" | "fx" | "peg";
 
 export const SOURCE_LABEL: Record<PriceSource, string> = {
-  binance: "Binance",
-  manual: "يدوي",
-  fx: "سعر رسمي (احتياطي)",
+  binance: "من Binance",
+  manual: "سعر يدوي",
+  fx: "سعر رسمي مؤقت",
   peg: "ثابت 1:1",
 };
 
-/** One currency's price: units of it per 1 USDT. */
+/** One currency: units of it per 1 USDT. */
 export interface UsdtPrice {
-  used: number; // the price every rate is built from
-  buy: number | null;
-  sell: number | null;
-  buyAds: number[];
-  sellAds: number[];
+  buy: number; // in force — Binance's, or typed by staff
+  sell: number;
+  used: number; // (buy + sell) / 2 — every rate is built from this
   source: PriceSource;
-  at: string; // ISO time it was set
+  at: string; // ISO time the price in force was set
+  /** Latest Binance reading — refreshed on every update, even while a typed
+   *  price is in force, so staff can compare and switch back. */
+  binanceBuy: number | null;
+  binanceSell: number | null;
+  binanceAt: string | null;
+  buyAds: number[]; // the ads behind binanceBuy (#3 to #7)
+  sellAds: number[];
 }
 
 export type UsdtPrices = Partial<Record<CurrencyCode, UsdtPrice>>;
+
+export const midOf = (buy: number, sell: number) => (buy + sell) / 2;
+
+function fixed(value: number, source: PriceSource, at: string, keep?: UsdtPrice): UsdtPrice {
+  return {
+    buy: value,
+    sell: value,
+    used: value,
+    source,
+    at,
+    binanceBuy: keep?.binanceBuy ?? null,
+    binanceSell: keep?.binanceSell ?? null,
+    binanceAt: keep?.binanceAt ?? null,
+    buyAds: keep?.buyAds ?? [],
+    sellAds: keep?.sellAds ?? [],
+  };
+}
+
+/** Reads a saved entry, including ones saved by the earlier one-price version. */
+export function normalizePrice(raw: any): UsdtPrice | undefined {
+  if (!raw || !(raw.used > 0)) return undefined;
+  const legacy = raw.binanceBuy === undefined;
+  const wasManual = raw.source === "manual";
+  const buy = legacy && wasManual ? raw.used : raw.buy ?? raw.used;
+  const sell = legacy && wasManual ? raw.used : raw.sell ?? raw.used;
+  return {
+    buy,
+    sell,
+    used: midOf(buy, sell),
+    source: raw.source ?? "binance",
+    at: raw.at ?? new Date(0).toISOString(),
+    binanceBuy: legacy ? (raw.source === "binance" || wasManual ? raw.buy ?? null : null) : raw.binanceBuy,
+    binanceSell: legacy ? (raw.source === "binance" || wasManual ? raw.sell ?? null : null) : raw.binanceSell,
+    binanceAt: legacy ? (raw.source === "binance" ? raw.at ?? null : null) : raw.binanceAt ?? null,
+    buyAds: Array.isArray(raw.buyAds) ? raw.buyAds : [],
+    sellAds: Array.isArray(raw.sellAds) ? raw.sellAds : [],
+  };
+}
+
+export function normalizePrices(raw: any): UsdtPrices {
+  const out: UsdtPrices = {};
+  if (raw && typeof raw === "object") {
+    for (const code of CURRENCY_ORDER) {
+      const p = normalizePrice(raw[code]);
+      if (p) out[code] = p;
+    }
+  }
+  return out;
+}
+
+/** Puts a currency back on Binance's latest buy/sell, or — for USD cash and
+ *  USD South Sudan, which Binance doesn't trade — back to 1:1. */
+export function backToAuto(code: CurrencyCode, p: UsdtPrice | undefined, at: string): UsdtPrice | null {
+  if (USD_PEGGED.includes(code)) return fixed(1, "peg", at);
+  if (!p || p.binanceBuy == null || p.binanceSell == null) return null;
+  return { ...p, buy: p.binanceBuy, sell: p.binanceSell, used: midOf(p.binanceBuy, p.binanceSell), source: "binance", at };
+}
 
 async function fetchUsdBaseRates(): Promise<Record<string, number>> {
   const res = await fetch(USD_SOURCE_URL, { cache: "no-store" });
@@ -135,47 +197,64 @@ export async function fetchMarketData(): Promise<MarketData> {
   return { binance, fx: fxResult.fx, fxError: fxResult.fxError, at: new Date().toISOString() };
 }
 
-/** Pure: turns fresh market data + the previously saved prices into the new
- *  saved prices. Rules per currency:
- *  - Binance answered → use it (middle of buy and sell, or the one side it gave).
- *  - Binance failed → keep the earlier price (Binance or hand-typed) as is.
- *  - Nothing earlier → the regular FX rate, except SDG whose official rate
- *    is far from the real one.
- *  - USDT, USD cash, USD South Sudan → 1, unless a price was typed by hand. */
-export function buildUsdtPrices(prev: UsdtPrices, data: MarketData): { prices: UsdtPrices; problems: string[] } {
+/** Pure: turns fresh market data + the saved prices into the new saved
+ *  prices. Rules per currency:
+ *  - USDT is the base: always 1.
+ *  - USD cash / USD South Sudan: 1:1 unless staff typed a price.
+ *  - A typed price stays in force; only its Binance reading is refreshed.
+ *  - Otherwise Binance's buy and sell.
+ *  - Binance failed → the earlier price stays.
+ *  - Nothing earlier → the regular FX rate for now (never for SDG, whose
+ *    official rate is far from the real one). */
+export function buildUsdtPrices(prevRaw: UsdtPrices, data: MarketData): { prices: UsdtPrices; problems: string[] } {
+  const prev = normalizePrices(prevRaw);
   const prices: UsdtPrices = {};
   const problems: string[] = [];
   for (const code of CURRENCY_ORDER) {
     const before = prev[code];
+    if (code === "USDT") {
+      prices[code] = fixed(1, "peg", data.at);
+      continue;
+    }
     if (USD_PEGGED.includes(code)) {
-      prices[code] =
-        before && before.source === "manual"
-          ? before
-          : { used: 1, buy: null, sell: null, buyAds: [], sellAds: [], source: "peg", at: data.at };
+      prices[code] = before ?? fixed(1, "peg", data.at);
       continue;
     }
     const q = data.binance[code];
-    if (q && (q.buy || q.sell)) {
-      const sides = [q.buy?.avg, q.sell?.avg].filter((v): v is number => typeof v === "number");
+    const fresh =
+      q && (q.buy || q.sell)
+        ? {
+            binanceBuy: q.buy?.avg ?? q.sell!.avg,
+            binanceSell: q.sell?.avg ?? q.buy!.avg,
+            binanceAt: data.at,
+            buyAds: q.buy?.prices ?? [],
+            sellAds: q.sell?.prices ?? [],
+          }
+        : null;
+    if (fresh && (!q!.buy || !q!.sell)) problems.push(`${code}: جانب واحد بس من Binance`);
+
+    if (before?.source === "manual") {
+      prices[code] = fresh ? { ...before, ...fresh } : before;
+      continue;
+    }
+    if (fresh) {
       prices[code] = {
-        used: sides.reduce((s, v) => s + v, 0) / sides.length,
-        buy: q.buy?.avg ?? null,
-        sell: q.sell?.avg ?? null,
-        buyAds: q.buy?.prices ?? [],
-        sellAds: q.sell?.prices ?? [],
+        ...fresh,
+        buy: fresh.binanceBuy,
+        sell: fresh.binanceSell,
+        used: midOf(fresh.binanceBuy, fresh.binanceSell),
         source: "binance",
         at: data.at,
       };
-      if (!q.buy || !q.sell) problems.push(`${code}: جانب واحد بس من Binance`);
       continue;
     }
     const why = q?.error ?? "ما رجع رد";
     if (before) {
       prices[code] = before;
-      problems.push(`${code}: Binance (${why}) — خلينا السعر السابق`);
+      problems.push(`${code}: Binance ما اشتغل (${why}) — السعر السابق باقي`);
     } else if (code !== "SDG" && data.fx?.[code]) {
-      prices[code] = { used: data.fx[code], buy: null, sell: null, buyAds: [], sellAds: [], source: "fx", at: data.at };
-      problems.push(`${code}: Binance (${why}) — استخدمنا السعر الرسمي`);
+      prices[code] = fixed(data.fx[code], "fx", data.at);
+      problems.push(`${code}: Binance ما اشتغل (${why}) — سعر رسمي مؤقت`);
     } else {
       problems.push(`${code}: ما في سعر (${why})`);
     }

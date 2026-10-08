@@ -1,7 +1,7 @@
 import { collection, getDocs, getDoc, doc, setDoc, deleteField, serverTimestamp } from "firebase/firestore";
 import { db, firebaseEnabled } from "./firebase";
 import { PAIRS, pairKey, isForwardDirection, isMultiplyCorridor, type CurrencyCode } from "./corridors";
-import { buildUsdtPrices, pairMarketPrices, type MarketData, type UsdtPrice, type UsdtPrices } from "./fx";
+import { backToAuto, buildUsdtPrices, midOf, normalizePrices, pairMarketPrices, type MarketData, type UsdtPrices } from "./fx";
 import { getMarginPercent } from "./settings";
 import { roundForDisplay } from "./format";
 import { appendRateHistory } from "./rateHistory";
@@ -197,7 +197,7 @@ export async function getUsdtPrices(): Promise<UsdtPrices> {
   if (!firebaseEnabled || !db) return {};
   try {
     const snap = await getDoc(doc(db, "settings", "usdtPrices"));
-    return (snap.exists() ? snap.data().prices : null) ?? {};
+    return normalizePrices(snap.exists() ? snap.data().prices : null);
   } catch {
     return {};
   }
@@ -241,32 +241,51 @@ export async function updateRatesFromLiveFx(): Promise<FxUpdateResult> {
   return { updated, prices, problems };
 }
 
-/** Replaces ONE currency's price by hand (e.g. a better rate was found that
- *  day) and rebuilds every pair that includes it. The Binance figures stay
- *  saved next to it for reference. The next update (daily or "update now")
- *  takes the Binance price again, except for USD cash / USD South Sudan,
- *  which keep a typed price until it is changed. */
-export async function setUsdtPriceManual(
-  code: CurrencyCode,
-  used: number
-): Promise<{ updated: PairUpdate[]; prices: UsdtPrices }> {
-  if (!firebaseEnabled || !db) throw new Error("Firebase is not configured — see .env.example.");
-  if (!(used > 0)) throw new Error("السعر لازم يكون أكبر من صفر");
-  const prices = await getUsdtPrices();
-  const before = prices[code];
-  const entry: UsdtPrice = {
-    used,
-    buy: before?.buy ?? null,
-    sell: before?.sell ?? null,
-    buyAds: before?.buyAds ?? [],
-    sellAds: before?.sellAds ?? [],
-    source: "manual",
-    at: new Date().toISOString(),
-  };
-  const next = { ...prices, [code]: entry };
-  await setDoc(doc(db, "settings", "usdtPrices"), { prices: next, updatedAt: serverTimestamp() });
+async function savePricesAndRebuild(next: UsdtPrices, code: CurrencyCode) {
+  await setDoc(doc(db!, "settings", "usdtPrices"), { prices: next, updatedAt: serverTimestamp() });
   const updated = await writePairs(pairMarketPrices(next, code));
   return { updated, prices: next };
+}
+
+/** Staff type their own buy and sell for ONE currency. It stays in force —
+ *  updates don't touch it — until resetUsdtPrice() puts it back on Binance.
+ *  Every pair with that currency is rebuilt right away. */
+export async function setUsdtPriceManual(
+  code: CurrencyCode,
+  buy: number,
+  sell: number
+): Promise<{ updated: PairUpdate[]; prices: UsdtPrices }> {
+  if (!firebaseEnabled || !db) throw new Error("Firebase is not configured — see .env.example.");
+  if (code === "USDT") throw new Error("USDT هو الأساس — سعره 1 دائماً");
+  if (!(buy > 0) || !(sell > 0)) throw new Error("سعر الشراء والبيع لازم يكونوا أكبر من صفر");
+  const prices = await getUsdtPrices();
+  const before = prices[code];
+  const next: UsdtPrices = {
+    ...prices,
+    [code]: {
+      buy,
+      sell,
+      used: midOf(buy, sell),
+      source: "manual",
+      at: new Date().toISOString(),
+      binanceBuy: before?.binanceBuy ?? null,
+      binanceSell: before?.binanceSell ?? null,
+      binanceAt: before?.binanceAt ?? null,
+      buyAds: before?.buyAds ?? [],
+      sellAds: before?.sellAds ?? [],
+    },
+  };
+  return savePricesAndRebuild(next, code);
+}
+
+/** Drops a typed price: back to Binance's latest buy/sell (or 1:1 for USD
+ *  cash / USD South Sudan). */
+export async function resetUsdtPrice(code: CurrencyCode): Promise<{ updated: PairUpdate[]; prices: UsdtPrices }> {
+  if (!firebaseEnabled || !db) throw new Error("Firebase is not configured — see .env.example.");
+  const prices = await getUsdtPrices();
+  const auto = backToAuto(code, prices[code], new Date().toISOString());
+  if (!auto) throw new Error("ما في سعر Binance محفوظ لهذه العملة — اضغط «تحديث الآن» أولاً");
+  return savePricesAndRebuild({ ...prices, [code]: auto }, code);
 }
 
 /** Converts an amount between any two of Master Digital's currencies. Uses the

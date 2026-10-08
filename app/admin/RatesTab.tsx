@@ -2,17 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeftRight, ChevronDown, Pencil, Power, RefreshCw } from "lucide-react";
+import { ArrowLeftRight, Power, RefreshCw } from "lucide-react";
 import {
   setRouteMargin,
   computeRate,
   getUsdtPrices,
+  resetUsdtPrice,
   setUsdtPriceManual,
   updateRatesFromLiveFx,
   type PairUpdate,
   type RateRow,
 } from "@/lib/rates";
-import { SKIP_ADS, SOURCE_LABEL, USE_ADS, type PriceSource, type UsdtPrices } from "@/lib/fx";
+import type { UsdtPrices } from "@/lib/fx";
+import UsdtPricesPanel from "./UsdtPricesPanel";
 import { formatSmart } from "@/lib/format";
 import { formatRelativeTime } from "@/lib/relativeTime";
 import { flowKey, setDisabledFlows, setMarginPercent } from "@/lib/settings";
@@ -24,12 +26,6 @@ import { demoMode } from "@/lib/store";
  *  and per-DIRECTION margins and on/off switches, so USDT → SDG and
  *  SDG → USDT each earn their own percentage. */
 
-const SOURCE_TONE: Record<PriceSource, string> = {
-  binance: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
-  manual: "bg-primary/15 text-primary",
-  fx: "bg-red-500/10 text-red-500",
-  peg: "bg-surface2 text-muted",
-};
 
 function SmallButton({ onClick, busy, children }: { onClick: () => void; busy?: boolean; children: React.ReactNode }) {
   return (
@@ -83,9 +79,8 @@ export default function RatesTab({ state, onError }: { state: RatesState; onErro
   const [fxUpdating, setFxUpdating] = useState(false);
   const [fxMessage, setFxMessage] = useState<string | null>(null);
   const [prices, setPrices] = useState<UsdtPrices>({});
-  const [priceInputs, setPriceInputs] = useState<Record<string, string>>({});
   const [savingPrice, setSavingPrice] = useState<CurrencyCode | null>(null);
-  const [openAds, setOpenAds] = useState<CurrencyCode | null>(null);
+  const [routeFilter, setRouteFilter] = useState<CurrencyCode | "ALL">("ALL");
 
   useEffect(() => {
     getUsdtPrices().then(setPrices);
@@ -198,7 +193,6 @@ export default function RatesTab({ state, onError }: { state: RatesState; onErro
       const { updated, prices: next, problems } = await updateRatesFromLiveFx();
       applyPairs(updated);
       setPrices(next);
-      setPriceInputs({});
       setFxMessage(`✅ تم تحديث ${updated.length} زوج${problems.length ? ` — ملاحظات: ${problems.join(" · ")}` : ""}`);
     } catch (err) {
       setFxMessage(`❌ ${err instanceof Error ? err.message : String(err)}`);
@@ -206,20 +200,29 @@ export default function RatesTab({ state, onError }: { state: RatesState; onErro
     setFxUpdating(false);
   }
 
-  async function savePrice(code: CurrencyCode) {
-    const val = parseFloat(priceInputs[code] ?? "");
-    if (!(val > 0)) return;
+  async function savePrice(code: CurrencyCode, buy: number, sell: number): Promise<boolean> {
     setSavingPrice(code);
     onError(null);
     try {
-      const { updated, prices: next } = await setUsdtPriceManual(code, val);
+      const { updated, prices: next } = await setUsdtPriceManual(code, buy, sell);
       applyPairs(updated);
       setPrices(next);
-      setPriceInputs((prev) => {
-        const n = { ...prev };
-        delete n[code];
-        return n;
-      });
+      setSavingPrice(null);
+      return true;
+    } catch (err) {
+      onError(err instanceof Error ? err.message : String(err));
+      setSavingPrice(null);
+      return false;
+    }
+  }
+
+  async function resetPrice(code: CurrencyCode) {
+    setSavingPrice(code);
+    onError(null);
+    try {
+      const { updated, prices: next } = await resetUsdtPrice(code);
+      applyPairs(updated);
+      setPrices(next);
     } catch (err) {
       onError(err instanceof Error ? err.message : String(err));
     }
@@ -253,7 +256,7 @@ export default function RatesTab({ state, onError }: { state: RatesState; onErro
 
         <div className="border-t border-border/60 p-5">
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-subtle">الهامش العام</label>
+            <label className="mb-1.5 block text-xs font-medium text-subtle">الهامش العام (لكل المسارات اللي ما عندها هامش خاص)</label>
             <div className="flex gap-2" dir="ltr">
               <div className="relative flex-1">
                 <input
@@ -276,121 +279,14 @@ export default function RatesTab({ state, onError }: { state: RatesState; onErro
         </div>
       </div>
 
-      {/* One USDT price per currency — every pair is built from these */}
-      <div className="card overflow-hidden p-0">
-        <div className="border-b border-border/60 p-5">
-          <p className="font-display text-base font-bold text-ink">سعر USDT لكل عملة</p>
-          <p className="mt-1 text-[11px] leading-relaxed text-muted">
-            من Binance P2P: نتخطى أول {SKIP_ADS} إعلانات (المثبتة) ونحسب متوسط الـ {USE_ADS} اللي بعدها، للشراء وللبيع. السعر
-            المستخدم = منتصف الاتنين، ومنه بتتحسب كل الأسعار. تقدر تكتب سعر بنفسك لأي عملة.
-          </p>
-        </div>
-        <ul className="divide-y divide-border/50">
-          {CURRENCY_ORDER.map((code) => {
-            const p = prices[code];
-            const c = CURRENCIES[code];
-            const typed = priceInputs[code];
-            const hasAds = !!p && (p.buyAds.length > 0 || p.sellAds.length > 0);
-            return (
-              <li key={code} className="p-4">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="flex items-center gap-2 text-sm font-semibold text-ink">
-                    <span className="text-lg">{c.flag}</span>
-                    <span className="font-mono" dir="ltr">{code}</span>
-                    <span className="text-xs font-normal text-muted">{c.name}</span>
-                  </p>
-                  {p ? (
-                    <span className={`chip ${SOURCE_TONE[p.source]}`}>{SOURCE_LABEL[p.source]}</span>
-                  ) : (
-                    <span className="chip bg-surface2 text-subtle">لم يُحدَّث</span>
-                  )}
-                </div>
+      {/* 1 — one USDT price per currency; every pair is built from these */}
+      <UsdtPricesPanel prices={prices} busy={savingPrice} onSave={savePrice} onReset={resetPrice} />
 
-                {p && (
-                  <>
-                    <p className="mt-2 font-mono text-lg font-bold text-primary" dir="ltr">
-                      1 USDT = {formatSmart(p.used)} {code}
-                    </p>
-                    <p className="flex flex-wrap gap-x-3 text-[11px] text-muted">
-                      {p.buy != null && (
-                        <span>
-                          شراء: <b className="font-mono text-ink" dir="ltr">{formatSmart(p.buy)}</b>
-                        </span>
-                      )}
-                      {p.sell != null && (
-                        <span>
-                          بيع: <b className="font-mono text-ink" dir="ltr">{formatSmart(p.sell)}</b>
-                        </span>
-                      )}
-                      <span>{formatRelativeTime(p.at)}</span>
-                    </p>
-                    {p.source === "manual" && p.buy != null && (
-                      <p className="mt-0.5 text-[11px] text-subtle">
-                        سعر يدوي — Binance كان{" "}
-                        <span className="font-mono" dir="ltr">
-                          {formatSmart(p.sell != null ? (p.buy + p.sell) / 2 : p.buy)}
-                        </span>
-                      </p>
-                    )}
-                    {hasAds && (
-                      <button
-                        onClick={() => setOpenAds(openAds === code ? null : code)}
-                        className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-primary"
-                      >
-                        الإعلانات المستخدمة
-                        <ChevronDown size={12} className={openAds === code ? "rotate-180" : ""} />
-                      </button>
-                    )}
-                    {openAds === code && hasAds && (
-                      <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
-                        {(
-                          [
-                            ["شراء", p.buyAds],
-                            ["بيع", p.sellAds],
-                          ] as const
-                        ).map(([label, ads]) => (
-                          <div key={label} className="rounded-xl bg-surface2 p-2.5">
-                            <p className="mb-1 font-semibold text-muted">{label}</p>
-                            {ads.length ? (
-                              <ol className="space-y-0.5 font-mono text-ink" dir="ltr">
-                                {ads.map((v, i) => (
-                                  <li key={i}>
-                                    #{i + SKIP_ADS + 1} · {formatSmart(v)}
-                                  </li>
-                                ))}
-                              </ol>
-                            ) : (
-                              <p className="text-subtle">—</p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                )}
-
-                <div className="mt-2.5 flex gap-2" dir="ltr">
-                  <div className="relative flex-1">
-                    <Pencil size={12} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-subtle" />
-                    <input
-                      type="number"
-                      step="any"
-                      inputMode="decimal"
-                      value={typed ?? ""}
-                      onChange={(e) => setPriceInputs((prev) => ({ ...prev, [code]: e.target.value }))}
-                      placeholder={p ? `سعر يدوي (${formatSmart(p.used)})` : "سعر يدوي"}
-                      aria-label={`سعر USDT بالـ ${code}`}
-                      className="field py-2 pl-8 pr-3 font-mono text-sm"
-                    />
-                  </div>
-                  <SmallButton onClick={() => savePrice(code)} busy={savingPrice === code}>
-                    حفظ
-                  </SmallButton>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+      <div className="px-1 pt-2">
+        <p className="font-display text-base font-bold text-ink">٢ · المسارات والهوامش</p>
+        <p className="mt-1 text-[11px] leading-relaxed text-muted">
+          سعر العميل = السعر المعتمد ± الهامش. لكل اتجاه هامش خاص وزر تشغيل/إيقاف. اختار عملة عشان تشوف مساراتها بس.
+        </p>
       </div>
 
       {/* Active flows summary */}
@@ -416,9 +312,25 @@ export default function RatesTab({ state, onError }: { state: RatesState; onErro
         </div>
       </div>
 
-      {/* Pair cards */}
+      {/* Pair cards, filtered by currency so the list stays short */}
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="فلترة المسارات بالعملة">
+        {(["ALL", ...CURRENCY_ORDER] as const).map((c) => (
+          <button
+            key={c}
+            onClick={() => setRouteFilter(c)}
+            aria-pressed={routeFilter === c}
+            className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
+              routeFilter === c ? "border-brand-navy bg-brand-navy text-white" : "border-border bg-surface text-muted hover:text-ink"
+            }`}
+            dir="ltr"
+          >
+            {c === "ALL" ? "الكل" : `${CURRENCIES[c].flag} ${c}`}
+          </button>
+        ))}
+      </div>
+
       <div className="grid gap-3 sm:grid-cols-2">
-        {PAIRS.map(({ a, b }) => {
+        {PAIRS.filter(({ a, b }) => routeFilter === "ALL" || a === routeFilter || b === routeFilter).map(({ a, b }) => {
           const row = rates.find((r) => r.from === a && r.to === b);
           if (!row) return null;
           const fromC = CURRENCIES[a];
@@ -447,7 +359,7 @@ export default function RatesTab({ state, onError }: { state: RatesState; onErro
               </div>
 
               <p className="mt-2 text-[11px] text-subtle" dir="ltr">
-                Market: 1 {b} = <span className="font-mono font-semibold text-muted">{formatSmart(row.marketPrice)}</span> {a}
+                المعتمد: 1 {b} = <span className="font-mono font-semibold text-muted">{formatSmart(row.marketPrice)}</span> {a}
               </p>
 
               {/* Each direction: rate + on/off + ITS OWN margin */}
