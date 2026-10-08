@@ -121,7 +121,7 @@ export function usdTable(costs: Record<string, number>): Record<string, number> 
     const y = costs[`${b}_${a}`];
     return x && y ? (x + y) / 2 : x || y || 0;
   };
-  const usd: Record<string, number> = { USDT: 1, USD: 1 };
+  const usd: Record<string, number> = { USDT: 1, USD: 1, USDSS: 1 };
   for (let pass = 0; pass < 4; pass++) {
     for (const p of PAIRS) {
       const m = mid(p.base, p.quote);

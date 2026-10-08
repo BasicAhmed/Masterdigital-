@@ -131,6 +131,50 @@ export function partyBalances(list: Obligation[], usd: Record<string, number>): 
 
 // ---------- Liquidity: cash on hand per currency ----------
 
+/** The places cash can sit inside one currency (الأصناف). A currency with no
+ *  list here (USDT, USD cash, USD South Sudan) has a single balance. Ids are
+ *  saved on records, so never rename or reuse an id — change the label. */
+export interface AccountDef {
+  id: string;
+  label: string;
+}
+
+export const ACCOUNTS: Partial<Record<CurrencyCode, AccountDef[]>> = {
+  UGX: [
+    { id: "ugx-momo", label: "موبايل موني" },
+    { id: "ugx-cash", label: "كاش في المكتب" },
+    { id: "ugx-bank", label: "حساب البنك" },
+  ],
+  SDG: [
+    { id: "sdg-bankak-1", label: "بنكك 1" },
+    { id: "sdg-bankak-2", label: "بنكك 2" },
+    { id: "sdg-bankak-3", label: "بنكك 3" },
+  ],
+  EGP: [
+    { id: "egp-vodafone", label: "فودافون كاش" },
+    { id: "egp-instapay", label: "انستا باي" },
+  ],
+  RWF: [{ id: "rwf-momo", label: "موبايل موني (Momo)" }],
+  KES: [{ id: "kes-mpesa", label: "امبسا (M-Pesa)" }],
+  SAR: [{ id: "sar-account", label: "ريال حساب" }],
+  AED: [{ id: "aed-account", label: "درهم حساب" }],
+};
+
+/** Records saved before categories existed, or saved without one. */
+export const UNASSIGNED = "";
+export const UNASSIGNED_LABEL = "غير مصنّف";
+
+export const accountsOf = (currency: CurrencyCode): AccountDef[] => ACCOUNTS[currency] ?? [];
+
+export function accountLabel(currency: CurrencyCode, id: string | undefined): string {
+  if (!id) return UNASSIGNED_LABEL;
+  return accountsOf(currency).find((a) => a.id === id)?.label ?? UNASSIGNED_LABEL;
+}
+
+/** Keeps an id only if it belongs to this currency (else unassigned). */
+export const validAccount = (currency: CurrencyCode, id: string | undefined): string =>
+  accountsOf(currency).some((a) => a.id === id) ? (id as string) : UNASSIGNED;
+
 export type MovementKind = "deposit" | "withdraw";
 
 /** A manual change to the funds: opening balance, top-up, owner withdrawal,
@@ -142,6 +186,8 @@ export interface Movement {
   kind: MovementKind;
   amount: number;
   note: string;
+  /** Category of that currency the cash went into / came out of. */
+  account?: string;
   createdAt: string;
 }
 
@@ -156,6 +202,8 @@ export interface LiquidityLine {
   source: "manual" | "transaction" | "obligation";
   label: string;
   refId: string;
+  /** Category inside the currency ("" = unassigned). */
+  account: string;
 }
 
 /** Every cash movement, from all three sources, as one ledger.
@@ -174,13 +222,16 @@ export function liquidityLedger(txs: Transaction[], obligations: Obligation[], m
       source: "manual",
       label: m.note || (m.kind === "deposit" ? "إيداع" : "سحب"),
       refId: m.id,
+      account: validAccount(m.currency, m.account),
     });
   }
   for (const t of txs) {
     if (t.status !== "completed") continue;
     const paidIn = t.amount + (t.feeSide === "from" ? t.fee : 0);
-    out.push({ date: t.date, currency: t.from, delta: paidIn, source: "transaction", label: `${t.ref} — ${t.customerName}`, refId: t.id });
-    out.push({ date: t.date, currency: t.to, delta: -t.payout, source: "transaction", label: `${t.ref} — ${t.customerName}`, refId: t.id });
+    const inAccount = validAccount(t.from, t.fromAccount);
+    const outAccount = validAccount(t.to, t.toAccount);
+    out.push({ date: t.date, currency: t.from, delta: paidIn, source: "transaction", label: `${t.ref} — ${t.customerName}`, refId: t.id, account: inAccount });
+    out.push({ date: t.date, currency: t.to, delta: -t.payout, source: "transaction", label: `${t.ref} — ${t.customerName}`, refId: t.id, account: outAccount });
     if (t.expense) {
       out.push({
         date: t.date,
@@ -189,6 +240,7 @@ export function liquidityLedger(txs: Transaction[], obligations: Obligation[], m
         source: "transaction",
         label: `${t.ref} — تكاليف`,
         refId: t.id,
+        account: t.expenseSide === "from" ? inAccount : outAccount,
       });
     }
   }
@@ -202,6 +254,7 @@ export function liquidityLedger(txs: Transaction[], obligations: Obligation[], m
         source: "obligation",
         label: `${o.kind === "receivable" ? "سلفة إلى" : "استلام من"} ${o.party}`,
         refId: o.id,
+        account: UNASSIGNED,
       });
     }
     for (const p of o.payments) {
@@ -212,10 +265,18 @@ export function liquidityLedger(txs: Transaction[], obligations: Obligation[], m
         source: "obligation",
         label: `${o.kind === "receivable" ? "سداد من" : "سداد إلى"} ${o.party}`,
         refId: o.id,
+        account: UNASSIGNED,
       });
     }
   }
   return out.sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/** Balance of one category inside a currency. */
+export interface AccountBalance {
+  id: string; // "" = unassigned
+  label: string;
+  balance: number;
 }
 
 export interface Balance {
@@ -224,18 +285,32 @@ export interface Balance {
   usd: number;
   inflow: number;
   outflow: number;
+  /** Split of `balance` by category. Empty for currencies without
+   *  categories; "غير مصنّف" only shows when something is in it. */
+  accounts: AccountBalance[];
 }
 
 export function balances(lines: LiquidityLine[], usd: Record<string, number>): Balance[] {
   return CURRENCY_LIST.map((c) => {
     const mine = lines.filter((l) => l.currency === c.code);
     const balance = mine.reduce((s, l) => s + l.delta, 0);
+    const defs = accountsOf(c.code);
+    const accounts: AccountBalance[] = defs.map((d) => ({
+      id: d.id,
+      label: d.label,
+      balance: mine.filter((l) => l.account === d.id).reduce((s, l) => s + l.delta, 0),
+    }));
+    if (defs.length) {
+      const loose = mine.filter((l) => !l.account).reduce((s, l) => s + l.delta, 0);
+      if (Math.abs(loose) > 1e-9) accounts.push({ id: UNASSIGNED, label: UNASSIGNED_LABEL, balance: loose });
+    }
     return {
       currency: c.code,
       balance,
       usd: toUsd(balance, c.code, usd),
       inflow: mine.filter((l) => l.delta > 0).reduce((s, l) => s + l.delta, 0),
       outflow: mine.filter((l) => l.delta < 0).reduce((s, l) => s - l.delta, 0),
+      accounts,
     };
   });
 }

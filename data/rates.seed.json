@@ -1,14 +1,230 @@
 {
-  "note": "STARTING MARKET PRICES taken from the midpoint of Master Digital's buy/sell sheet — tap 'تحديث الآن' in /admin to load live prices. Each pair has ONE market price, quoted as units of the first currency per 1 unit of the second (e.g. SDG/USDT = 8230 means 8230 SDG = 1 USDT). Both directions are derived from it, each with its own margin set in /admin.",
+  "note": "STARTING MARKET PRICES taken from the midpoint of Master Digital's buy/sell sheet. Pairs added later (SAR, AED, USD cash, USD South Sudan and the extra cross pairs) are worked out from these and from SAR 3.75 / AED 3.6725 per USD; USDT, USD cash and USD South Sudan start at 1:1. Tap 'تحديث الآن' in /admin to load live prices. Each pair has ONE market price, quoted as units of the first currency per 1 unit of the second (e.g. SDG/USDT = 8230 means 8230 SDG = 1 USDT). Both directions are derived from it, each with its own margin set in /admin.",
   "rates": [
-    { "from": "SDG", "to": "UGX", "marketPrice": 2.057 },
-    { "from": "SDG", "to": "RWF", "marketPrice": 5.4855 },
-    { "from": "SDG", "to": "KES", "marketPrice": 63.4921 },
-    { "from": "SDG", "to": "USDT", "marketPrice": 8230 },
-    { "from": "SDG", "to": "EGP", "marketPrice": 156.085 },
-    { "from": "UGX", "to": "EGP", "marketPrice": 75.68 },
-    { "from": "RWF", "to": "EGP", "marketPrice": 28.38 },
-    { "from": "KES", "to": "EGP", "marketPrice": 2.455 },
-    { "from": "EGP", "to": "USDT", "marketPrice": 52.9 }
+    {
+      "from": "SDG",
+      "to": "UGX",
+      "marketPrice": 2.057
+    },
+    {
+      "from": "SDG",
+      "to": "RWF",
+      "marketPrice": 5.4855
+    },
+    {
+      "from": "SDG",
+      "to": "KES",
+      "marketPrice": 63.4921
+    },
+    {
+      "from": "SDG",
+      "to": "EGP",
+      "marketPrice": 156.085
+    },
+    {
+      "from": "SDG",
+      "to": "SAR",
+      "marketPrice": 2194.67
+    },
+    {
+      "from": "SDG",
+      "to": "AED",
+      "marketPrice": 2240.98
+    },
+    {
+      "from": "SDG",
+      "to": "USDT",
+      "marketPrice": 8230
+    },
+    {
+      "from": "SDG",
+      "to": "USD",
+      "marketPrice": 8230
+    },
+    {
+      "from": "SDG",
+      "to": "USDSS",
+      "marketPrice": 8230
+    },
+    {
+      "from": "UGX",
+      "to": "RWF",
+      "marketPrice": 2.66675
+    },
+    {
+      "from": "UGX",
+      "to": "KES",
+      "marketPrice": 30.8664
+    },
+    {
+      "from": "UGX",
+      "to": "EGP",
+      "marketPrice": 75.68
+    },
+    {
+      "from": "UGX",
+      "to": "SAR",
+      "marketPrice": 1066.93
+    },
+    {
+      "from": "UGX",
+      "to": "AED",
+      "marketPrice": 1089.44
+    },
+    {
+      "from": "UGX",
+      "to": "USDT",
+      "marketPrice": 4000.97
+    },
+    {
+      "from": "UGX",
+      "to": "USD",
+      "marketPrice": 4000.97
+    },
+    {
+      "from": "UGX",
+      "to": "USDSS",
+      "marketPrice": 4000.97
+    },
+    {
+      "from": "RWF",
+      "to": "KES",
+      "marketPrice": 11.5745
+    },
+    {
+      "from": "RWF",
+      "to": "EGP",
+      "marketPrice": 28.38
+    },
+    {
+      "from": "RWF",
+      "to": "SAR",
+      "marketPrice": 400.085
+    },
+    {
+      "from": "RWF",
+      "to": "AED",
+      "marketPrice": 408.528
+    },
+    {
+      "from": "RWF",
+      "to": "USDT",
+      "marketPrice": 1500.32
+    },
+    {
+      "from": "RWF",
+      "to": "USD",
+      "marketPrice": 1500.32
+    },
+    {
+      "from": "RWF",
+      "to": "USDSS",
+      "marketPrice": 1500.32
+    },
+    {
+      "from": "KES",
+      "to": "EGP",
+      "marketPrice": 2.455
+    },
+    {
+      "from": "KES",
+      "to": "SAR",
+      "marketPrice": 34.566
+    },
+    {
+      "from": "KES",
+      "to": "AED",
+      "marketPrice": 35.2954
+    },
+    {
+      "from": "KES",
+      "to": "USDT",
+      "marketPrice": 129.622
+    },
+    {
+      "from": "KES",
+      "to": "USD",
+      "marketPrice": 129.622
+    },
+    {
+      "from": "KES",
+      "to": "USDSS",
+      "marketPrice": 129.622
+    },
+    {
+      "from": "EGP",
+      "to": "SAR",
+      "marketPrice": 14.1067
+    },
+    {
+      "from": "EGP",
+      "to": "AED",
+      "marketPrice": 14.4044
+    },
+    {
+      "from": "EGP",
+      "to": "USDT",
+      "marketPrice": 52.9
+    },
+    {
+      "from": "EGP",
+      "to": "USD",
+      "marketPrice": 52.9
+    },
+    {
+      "from": "EGP",
+      "to": "USDSS",
+      "marketPrice": 52.9
+    },
+    {
+      "from": "SAR",
+      "to": "AED",
+      "marketPrice": 1.0211
+    },
+    {
+      "from": "SAR",
+      "to": "USDT",
+      "marketPrice": 3.75
+    },
+    {
+      "from": "SAR",
+      "to": "USD",
+      "marketPrice": 3.75
+    },
+    {
+      "from": "SAR",
+      "to": "USDSS",
+      "marketPrice": 3.75
+    },
+    {
+      "from": "AED",
+      "to": "USDT",
+      "marketPrice": 3.6725
+    },
+    {
+      "from": "AED",
+      "to": "USD",
+      "marketPrice": 3.6725
+    },
+    {
+      "from": "AED",
+      "to": "USDSS",
+      "marketPrice": 3.6725
+    },
+    {
+      "from": "USDT",
+      "to": "USD",
+      "marketPrice": 1
+    },
+    {
+      "from": "USDT",
+      "to": "USDSS",
+      "marketPrice": 1
+    },
+    {
+      "from": "USD",
+      "to": "USDSS",
+      "marketPrice": 1
+    }
   ]
 }

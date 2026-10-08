@@ -46,8 +46,13 @@ costs paid. Figures are converted to USD (USDT = 1 USD, from the market
 prices) and **frozen on the transaction when saved**. Only **completed**
 transactions count toward revenue and profit.
 
-Currencies: SDG, EGP, UGX, RWF, KES, USDT — 9 pairs, 18 routes
-(`lib/corridors.ts`). Starting market prices: `data/rates.seed.json`.
+Currencies: SDG, UGX, RWF, KES, EGP, SAR, AED, USDT, USD (cash), USDSS (USD South
+Sudan) — every currency paired with every other: 45 pairs, 90 routes
+(`lib/corridors.ts`). USDT, USD and USDSS are priced at 1 USD by the live update.
+
+Liquidity categories (bank accounts, mobile money, cash in office…) per currency
+are listed in `ACCOUNTS` in `lib/books.ts`; deposits, withdrawals and transactions
+pick one, and the liquidity page shows each category's balance. Starting market prices: `data/rates.seed.json`.
 
 ## How the modules connect
 

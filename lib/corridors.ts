@@ -1,4 +1,4 @@
-export type CurrencyCode = "SDG" | "EGP" | "UGX" | "RWF" | "KES" | "USDT";
+export type CurrencyCode = "SDG" | "EGP" | "UGX" | "RWF" | "KES" | "SAR" | "AED" | "USDT" | "USD" | "USDSS";
 
 export interface CurrencyInfo {
   code: CurrencyCode;
@@ -13,32 +13,40 @@ export const CURRENCIES: Record<CurrencyCode, CurrencyInfo> = {
   UGX: { code: "UGX", name: "أوغندا", flag: "🇺🇬", currency: "الشلن الأوغندي" },
   RWF: { code: "RWF", name: "رواندا", flag: "🇷🇼", currency: "الفرنك الرواندي" },
   KES: { code: "KES", name: "كينيا", flag: "🇰🇪", currency: "الشلن الكيني" },
+  SAR: { code: "SAR", name: "السعودية", flag: "🇸🇦", currency: "الريال السعودي" },
+  AED: { code: "AED", name: "الإمارات", flag: "🇦🇪", currency: "الدرهم الإماراتي" },
   USDT: { code: "USDT", name: "USDT (تيثر)", flag: "₮", currency: "تيثر" },
+  USD: { code: "USD", name: "USD كاش", flag: "💵", currency: "الدولار كاش" },
+  USDSS: { code: "USDSS", name: "USD جنوب السودان", flag: "🇸🇸", currency: "الدولار (جنوب السودان)" },
 };
+
+/** Currencies that always equal 1 USD for pricing and reporting. The live FX
+ *  update (cron + "update now") prices them at 1, so their market price vs
+ *  each other is 1 until it is changed by hand in /admin. */
+export const USD_PEGGED: CurrencyCode[] = ["USDT", "USD", "USDSS"];
+
+/** Units of `code` per 1 USD from a live FX table (open.er-api style). */
+export function usdRateFor(code: CurrencyCode, usdRates: Record<string, number>): number | undefined {
+  return USD_PEGGED.includes(code) ? 1 : usdRates[code];
+}
 
 export interface CurrencyPair {
   a: CurrencyCode;
   b: CurrencyCode;
 }
 
+/** Order of the currencies, from most units per 1 USD to fewest. It decides
+ *  which side of a pair is `a` (a pair's market price is "units of `a` per 1
+ *  `b`", so it is never a tiny fraction). Add a currency once, in its place
+ *  in this list, and every corridor with it is created automatically. */
+export const CURRENCY_ORDER: CurrencyCode[] = ["SDG", "UGX", "RWF", "KES", "EGP", "SAR", "AED", "USDT", "USD", "USDSS"];
+
 /** Each PAIR is one corridor that works in both directions, priced from a
- *  single market price (see lib/rates.ts for the formula). `a` and `b` just
- *  fix which side the stored marketPrice is quoted from — not a "forward is
- *  better" distinction. Add a currency's whole route list here once; both
- *  directions become available automatically. */
-export const PAIRS: CurrencyPair[] = [
-  // Sudanese pound
-  { a: "SDG", b: "UGX" },
-  { a: "SDG", b: "RWF" },
-  { a: "SDG", b: "KES" },
-  { a: "SDG", b: "USDT" },
-  { a: "SDG", b: "EGP" },
-  // Egyptian pound
-  { a: "UGX", b: "EGP" },
-  { a: "RWF", b: "EGP" },
-  { a: "KES", b: "EGP" },
-  { a: "EGP", b: "USDT" },
-];
+ *  single market price (see lib/rates.ts). Every currency is paired with
+ *  every other one: 10 currencies → 45 pairs → 90 routes. */
+export const PAIRS: CurrencyPair[] = CURRENCY_ORDER.flatMap((a, i) =>
+  CURRENCY_ORDER.slice(i + 1).map((b) => ({ a, b }))
+);
 
 export function findPair(x: CurrencyCode, y: CurrencyCode): CurrencyPair | undefined {
   return PAIRS.find((p) => (p.a === x && p.b === y) || (p.a === y && p.b === x));

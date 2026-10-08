@@ -7,6 +7,7 @@ import { computeTx, type FeeSide } from "@/lib/calc";
 import { fmt, fmtMoney, fmtPct, fmtRate, fmtUsd, todayStr } from "@/lib/format";
 import { blankCustomer, nextRef, PAYMENT_METHODS, STATUS_LABEL, type Customer, type Transaction, type TxStatus } from "@/lib/data";
 import { newId } from "@/lib/store";
+import { accountsOf, validAccount } from "@/lib/books";
 import type { AdminData } from "./AdminApp";
 import { Field, Modal, NumInput } from "./ui";
 
@@ -44,6 +45,8 @@ export default function TransactionForm({
   const [payMethod, setPayMethod] = useState(edit?.payMethod ?? "");
   const [payoutMethod, setPayoutMethod] = useState(edit?.payoutMethod ?? "");
   const [recipient, setRecipient] = useState(edit?.recipient ?? "");
+  const [fromAccount, setFromAccount] = useState(edit?.fromAccount ?? "");
+  const [toAccount, setToAccount] = useState(edit?.toAccount ?? "");
   const [status, setStatus] = useState<TxStatus>(edit?.status ?? "completed");
   const [notes, setNotes] = useState(edit?.notes ?? "");
   const [saving, setSaving] = useState(false);
@@ -69,13 +72,19 @@ export default function TransactionForm({
   });
 
   // Cash on hand in the payout currency. When editing a completed transfer, its own payout is added back first.
+  // With a payout category chosen, the check uses that category's balance.
+  const toBalance = data.balances.find((b) => b.currency === to);
+  const payoutAccount = validAccount(to, toAccount);
+  const wasHere = !!edit && edit.status === "completed" && edit.to === to && validAccount(to, edit.toAccount) === payoutAccount;
   const available =
-    (data.balances.find((b) => b.currency === to)?.balance ?? 0) +
-    (edit && edit.status === "completed" && edit.to === to ? edit.payout : 0);
+    (payoutAccount ? toBalance?.accounts.find((a) => a.id === payoutAccount)?.balance ?? 0 : toBalance?.balance ?? 0) +
+    (wasHere ? edit!.payout : 0);
 
   function pickRoute(f: CurrencyCode, t: CurrencyCode) {
     setFrom(f);
     setTo(t);
+    setFromAccount((a: string) => validAccount(f, a));
+    setToAccount((a: string) => validAccount(t, a));
     const r = routeOf(f, t);
     setRate(r ? String(r.rate) : "");
     setCost(r ? String(r.cost) : "");
@@ -130,6 +139,8 @@ export default function TransactionForm({
         payMethod,
         payoutMethod,
         recipient: recipient.trim(),
+        fromAccount: validAccount(from, fromAccount),
+        toAccount: validAccount(to, toAccount),
         status,
         notes: notes.trim(),
         createdAt: edit?.createdAt ?? new Date().toISOString(),
@@ -373,6 +384,30 @@ export default function TransactionForm({
             <Field label="المستلم (اسم / رقم حساب)">
               <input value={recipient} onChange={(e) => setRecipient(e.target.value)} className="field px-3 py-2.5 text-sm" />
             </Field>
+            {accountsOf(from).length > 0 && (
+              <Field label={`استلمنا ${from} في`} hint="الصنف اللي دخلت فيه فلوس العميل.">
+                <select value={validAccount(from, fromAccount)} onChange={(e) => setFromAccount(e.target.value)} className="field px-3 py-2.5 text-sm">
+                  <option value="">غير مصنّف</option>
+                  {accountsOf(from).map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+            {accountsOf(to).length > 0 && (
+              <Field label={`دفعنا ${to} من`} hint="الصنف اللي طلعت منه فلوس المستلم.">
+                <select value={validAccount(to, toAccount)} onChange={(e) => setToAccount(e.target.value)} className="field px-3 py-2.5 text-sm">
+                  <option value="">غير مصنّف</option>
+                  {accountsOf(to).map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
           </div>
           <div className="mt-3">
             <Field label="ملاحظات">

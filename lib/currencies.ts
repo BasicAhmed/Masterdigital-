@@ -13,6 +13,9 @@ export interface CurrencyInfo {
   decimals: number;
 }
 
+/** Currencies shown with cents; the rest are whole numbers. */
+const TWO_DECIMALS: CurrencyCode[] = ["USDT", "USD", "USDSS", "SAR", "AED"];
+
 export const CURRENCIES = Object.fromEntries(
   Object.values(BASE).map((c) => [
     c.code,
@@ -21,7 +24,7 @@ export const CURRENCIES = Object.fromEntries(
       name: c.code === "USDT" ? "USDT" : c.currency,
       country: c.name,
       flag: c.flag,
-      decimals: c.code === "USDT" ? 2 : 0,
+      decimals: TWO_DECIMALS.includes(c.code) ? 2 : 0,
     },
   ])
 ) as Record<CurrencyCode, CurrencyInfo>;

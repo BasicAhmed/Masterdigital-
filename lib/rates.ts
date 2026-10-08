@@ -1,6 +1,6 @@
 import { collection, getDocs, getDoc, doc, setDoc, deleteField, serverTimestamp } from "firebase/firestore";
 import { db, firebaseEnabled } from "./firebase";
-import { PAIRS, pairKey, isForwardDirection, isMultiplyCorridor, type CurrencyCode } from "./corridors";
+import { PAIRS, pairKey, isForwardDirection, isMultiplyCorridor, usdRateFor, type CurrencyCode } from "./corridors";
 import { getMarginPercent } from "./settings";
 import { roundForDisplay } from "./format";
 import { appendRateHistory } from "./rateHistory";
@@ -279,7 +279,7 @@ export async function updateRatesFromLiveFx(): Promise<FxUpdateResult> {
   const sdgSource: SdgSourceDetail | undefined = data.sdgDetail
     ? { usdtToSdg: data.sdgDetail.usdtToSdg, prices: data.sdgDetail.prices }
     : undefined;
-  const rateFor = (code: CurrencyCode) => (code === "USDT" ? 1 : usdRates[code]);
+  const rateFor = (code: CurrencyCode) => usdRateFor(code, usdRates);
 
   const updated: FxUpdateResult["updated"] = [];
   const skipped: string[] = [];

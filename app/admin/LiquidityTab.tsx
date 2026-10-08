@@ -5,7 +5,7 @@ import { ArrowDownToLine, ArrowUpFromLine, Check, Download, Trash2, TriangleAler
 import { CURRENCIES, CURRENCY_LIST, type CurrencyCode } from "@/lib/currencies";
 import { fmtMoney, fmtUsd, todayStr } from "@/lib/format";
 import { downloadCsv } from "@/lib/data";
-import type { MovementKind } from "@/lib/books";
+import { accountLabel, accountsOf, validAccount, type MovementKind } from "@/lib/books";
 import { newId } from "@/lib/store";
 import type { AdminData } from "./AdminApp";
 import { Field, Modal, NumInput, Panel } from "./ui";
@@ -19,12 +19,16 @@ const SOURCE_TONE = {
 
 function MovementForm({ kind, currency, data, onClose }: { kind: MovementKind; currency: CurrencyCode; data: AdminData; onClose: () => void }) {
   const [cur, setCur] = useState<CurrencyCode>(currency);
+  const [account, setAccount] = useState<string>(accountsOf(currency)[0]?.id ?? "");
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(todayStr());
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const a = parseFloat(amount) || 0;
-  const available = data.balances.find((b) => b.currency === cur)?.balance ?? 0;
+  const cats = accountsOf(cur);
+  const curBalance = data.balances.find((b) => b.currency === cur);
+  const available = cats.length ? curBalance?.accounts.find((x) => x.id === account)?.balance ?? 0 : curBalance?.balance ?? 0;
+  const availableLabel = cats.length ? accountLabel(cur, account) : "";
 
   return (
     <Modal title={kind === "deposit" ? "إيداع في السيولة" : "سحب من السيولة"} onClose={onClose}>
@@ -37,7 +41,15 @@ function MovementForm({ kind, currency, data, onClose }: { kind: MovementKind; c
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="العملة">
-            <select value={cur} onChange={(e) => setCur(e.target.value as CurrencyCode)} className="field px-3 py-2.5 text-sm font-semibold">
+            <select
+              value={cur}
+              onChange={(e) => {
+                const next = e.target.value as CurrencyCode;
+                setCur(next);
+                setAccount(accountsOf(next)[0]?.id ?? "");
+              }}
+              className="field px-3 py-2.5 text-sm font-semibold"
+            >
               {CURRENCY_LIST.map((c) => (
                 <option key={c.code} value={c.code}>
                   {c.flag} {c.code} — {c.name}
@@ -45,7 +57,19 @@ function MovementForm({ kind, currency, data, onClose }: { kind: MovementKind; c
               ))}
             </select>
           </Field>
-          <Field label="المبلغ" hint={`الرصيد الحالي: ${fmtMoney(available, cur)} ${cur}`}>
+          {cats.length > 0 && (
+            <Field label="الصنف" hint="المكان اللي حتتحرك فيه السيولة.">
+              <select value={account} onChange={(e) => setAccount(e.target.value)} className="field px-3 py-2.5 text-sm font-semibold">
+                {cats.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.label}
+                  </option>
+                ))}
+                <option value="">غير مصنّف</option>
+              </select>
+            </Field>
+          )}
+          <Field label="المبلغ" hint={`الرصيد الحالي${availableLabel ? ` (${availableLabel})` : ""}: ${fmtMoney(available, cur)} ${cur}`}>
             <NumInput value={amount} onChange={setAmount} suffix={cur} decimals={2} placeholder="0" className="text-base" />
           </Field>
           <Field label="التاريخ">
@@ -63,7 +87,7 @@ function MovementForm({ kind, currency, data, onClose }: { kind: MovementKind; c
           onClick={async () => {
             setSaving(true);
             try {
-              await data.upsertMovement({ id: newId(), date, currency: cur, kind, amount: a, note: note.trim(), createdAt: new Date().toISOString() });
+              await data.upsertMovement({ id: newId(), date, currency: cur, kind, amount: a, note: note.trim(), account: validAccount(cur, account), createdAt: new Date().toISOString() });
               onClose();
             } catch {
               setSaving(false);
@@ -94,8 +118,11 @@ export default function LiquidityTab({ data }: { data: AdminData }) {
       ["العملة", "الرصيد", "القيمة (USD)", "إجمالي الداخل", "إجمالي الخارج"],
       ...balances.map((b) => [b.currency, Math.round(b.balance * 100) / 100, Math.round(b.usd * 100) / 100, Math.round(b.inflow * 100) / 100, Math.round(b.outflow * 100) / 100]),
       [],
-      ["التاريخ", "العملة", "الحركة", "المصدر", "البيان"],
-      ...lines.map((l) => [l.date, l.currency, Math.round(l.delta * 100) / 100, SOURCE_LABEL[l.source], l.label]),
+      ["العملة", "الصنف", "الرصيد"],
+      ...balances.flatMap((b) => b.accounts.map((a) => [b.currency, a.label, Math.round(a.balance * 100) / 100])),
+      [],
+      ["التاريخ", "العملة", "الصنف", "الحركة", "المصدر", "البيان"],
+      ...lines.map((l) => [l.date, l.currency, accountsOf(l.currency).length ? accountLabel(l.currency, l.account) : "", Math.round(l.delta * 100) / 100, SOURCE_LABEL[l.source], l.label]),
     ]);
   }
 
@@ -151,6 +178,18 @@ export default function LiquidityTab({ data }: { data: AdminData }) {
               <p className="num text-xs text-muted" dir="ltr">
                 ≈ {fmtUsd(b.usd)}
               </p>
+              {b.accounts.length > 0 && (
+                <ul className="mt-3 space-y-1 border-t border-border/50 pt-2.5">
+                  {b.accounts.map((a) => (
+                    <li key={a.id || "none"} className="flex items-center justify-between gap-2 text-xs">
+                      <span className={a.id ? "text-muted" : "font-semibold text-amber-600"}>{a.label}</span>
+                      <span className={`num font-semibold ${a.balance < -1e-9 ? "text-red-500" : "text-ink"}`} dir="ltr">
+                        {fmtMoney(a.balance, b.currency)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
               <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface2">
                 <div className={`h-full rounded-full ${neg ? "bg-red-500" : "bg-primary"}`} style={{ width: `${Math.max(2, (Math.abs(b.usd) / maxUsd) * 100)}%` }} />
               </div>
@@ -204,6 +243,7 @@ export default function LiquidityTab({ data }: { data: AdminData }) {
                 <div className="min-w-0">
                   <p className="flex items-center gap-2">
                     <span className={`chip ${SOURCE_TONE[l.source]}`}>{SOURCE_LABEL[l.source]}</span>
+                    {accountsOf(l.currency).length > 0 && <span className="chip bg-surface2 text-muted">{accountLabel(l.currency, l.account)}</span>}
                     <span className="truncate text-sm text-ink">{l.label}</span>
                   </p>
                   <p className="num mt-0.5 text-[11px] text-subtle" dir="ltr">{l.date}</p>

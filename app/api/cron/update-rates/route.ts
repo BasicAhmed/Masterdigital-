@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebaseAdmin";
-import { PAIRS, type CurrencyCode } from "@/lib/corridors";
+import { PAIRS, usdRateFor, type CurrencyCode } from "@/lib/corridors";
 import { fetchCombinedUsdRates } from "@/lib/fx";
 import { mergeHistoryEntry, todayDateStr, type RateHistoryPoint } from "@/lib/rateHistory";
 import { computeRate } from "@/lib/rates";
@@ -10,13 +10,6 @@ import { formatRate } from "@/lib/format";
 import type { Firestore } from "firebase-admin/firestore";
 
 export const dynamic = "force-dynamic";
-
-/** USDT tracks USD 1:1 for this purpose. Every other currency (including
- *  SDG, via Binance P2P) comes from fetchCombinedUsdRates. */
-function usdRateFor(code: CurrencyCode, usdRates: Record<string, number>): number | undefined {
-  if (code === "USDT") return 1;
-  return usdRates[code];
-}
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");

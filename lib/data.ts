@@ -46,6 +46,10 @@ export interface Transaction {
   payMethod: string; // how the customer paid
   payoutMethod: string; // how the recipient was paid
   recipient: string;
+  /** Liquidity category the customer's money went into (in `from`) and the
+   *  one the payout came out of (in `to`). Empty = unassigned. */
+  fromAccount?: string;
+  toAccount?: string;
   status: TxStatus;
   notes: string;
   createdAt: string;

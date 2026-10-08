@@ -26,7 +26,11 @@ const QUICK_AMOUNTS: Record<CurrencyCode, number[]> = {
   UGX: [100000, 500000, 1000000],
   RWF: [50000, 100000, 500000],
   KES: [5000, 10000, 50000],
+  SAR: [500, 1000, 5000],
+  AED: [500, 1000, 5000],
   USDT: [100, 500, 1000],
+  USD: [100, 500, 1000],
+  USDSS: [100, 500, 1000],
 };
 
 /** Custom event other sections fire to preselect a pair and jump to the calculator. */
