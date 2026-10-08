@@ -5,7 +5,7 @@ import { ArrowLeftRight, Check, Search, UserPlus, X } from "lucide-react";
 import { CURRENCIES, CURRENCY_LIST, destinationsFor, findPair, routeKey, type CurrencyCode } from "@/lib/currencies";
 import { computeTx, type FeeSide } from "@/lib/calc";
 import { fmt, fmtMoney, fmtPct, fmtRate, fmtUsd, todayStr } from "@/lib/format";
-import { blankCustomer, nextRef, PAYMENT_METHODS, STATUS_LABEL, type Customer, type Transaction, type TxStatus } from "@/lib/data";
+import { blankCustomer, nextCustomerCode, nextRef, PAYMENT_METHODS, STATUS_LABEL, type Customer, type Transaction, type TxStatus } from "@/lib/data";
 import { newId } from "@/lib/store";
 import { accountsOf, validAccount } from "@/lib/books";
 import type { AdminData } from "./AdminApp";
@@ -223,7 +223,7 @@ export default function TransactionForm({
                 </div>
                 <button
                   onClick={() => {
-                    setDraft({ ...blankCustomer(), name: /\d{5,}/.test(query) ? "" : query.trim(), phone: /\d{5,}/.test(query) ? query.trim() : "" });
+                    setDraft({ ...blankCustomer(nextCustomerCode(customers)), name: /\d{5,}/.test(query) ? "" : query.trim(), phone: /\d{5,}/.test(query) ? query.trim() : "" });
                     setCreating(true);
                   }}
                   className="btn-ghost shrink-0 px-3.5 py-2 text-xs"

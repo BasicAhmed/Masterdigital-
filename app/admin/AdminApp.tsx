@@ -100,6 +100,8 @@ export interface AdminData {
   alerts: RateAlert[];
   feedback: Feedback[];
   upsertCustomer: (c: Customer) => Promise<Customer>;
+  /** Saves many customers (an import), a few at a time. */
+  importCustomers: (list: Customer[], onProgress?: (done: number) => void) => Promise<void>;
   removeCustomer: (id: string) => Promise<void>;
   upsertTx: (t: Transaction) => Promise<void>;
   removeTx: (id: string) => Promise<void>;
@@ -224,6 +226,26 @@ export default function AdminApp({ onSignOut, userEmail }: { onSignOut?: () => v
           setTxs((prev) => prev.map((t) => (t.customerId === c.id && t.customerName !== c.name ? { ...t, customerName: c.name } : t)));
           setObligations((prev) => prev.map((o) => (o.customerId === c.id && o.party !== c.name ? { ...o, party: c.name } : o)));
           return c;
+        }),
+      importCustomers: (list, onProgress) =>
+        guard(async () => {
+          const queue = [...list];
+          const savedList: Customer[] = [];
+          const worker = async () => {
+            while (queue.length) {
+              const c = queue.shift()!;
+              await saveCustomer(c);
+              savedList.push(c);
+              onProgress?.(savedList.length);
+            }
+          };
+          try {
+            await Promise.all([worker(), worker(), worker(), worker(), worker()]);
+          } finally {
+            // show whatever got saved, even if the import stopped half way
+            const saved = new Map(savedList.map((c) => [c.id, c]));
+            setCustomers((prev) => [...prev.map((x) => saved.get(x.id) ?? x), ...Array.from(saved.values()).filter((c) => !prev.some((x) => x.id === c.id))]);
+          }
         }),
       removeCustomer: (id) =>
         guard(async () => {

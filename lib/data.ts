@@ -2,13 +2,27 @@ import type { CurrencyCode } from "./currencies";
 import type { FeeSide } from "./calc";
 import { listDocs, removeDoc, saveDoc, newId } from "./store";
 
+export type Gender = "male" | "female" | "";
+
 export interface Customer {
   id: string;
+  /** Customer number staff use (رقم العميل) — the ID column of the old sheet. */
+  code?: number;
+  /** How to address them: الأخ، الأخت، السيد… */
+  title?: string;
+  gender?: Gender;
   name: string;
   phone: string;
   country: string;
   notes: string;
   createdAt: string;
+}
+
+export const TITLES = ["الأخ", "الأخت", "السيد", "السيدة", "الأستاذ", "الأستاذة", "الدكتور", "الدكتورة"];
+
+/** Next free customer number. */
+export function nextCustomerCode(list: Customer[]): number {
+  return list.reduce((m, c) => Math.max(m, c.code ?? 0), 0) + 1;
 }
 
 export type TxStatus = "completed" | "pending" | "cancelled";
@@ -66,8 +80,8 @@ export async function getTransactions(): Promise<Transaction[]> {
 export const saveTransaction = (t: Transaction) => saveDoc("transactions", t);
 export const deleteTransaction = (id: string) => removeDoc("transactions", id);
 
-export function blankCustomer(): Customer {
-  return { id: newId(), name: "", phone: "", country: "", notes: "", createdAt: new Date().toISOString() };
+export function blankCustomer(code?: number): Customer {
+  return { id: newId(), code, title: "", gender: "", name: "", phone: "", country: "", notes: "", createdAt: new Date().toISOString() };
 }
 
 /** MD-251005-007 — date + running number for that day. */

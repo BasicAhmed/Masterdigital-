@@ -106,8 +106,11 @@ export function monthlySeries(txs: Transaction[], months: number): (Totals & { m
 
 export interface CustomerStat extends Totals {
   customer: Customer;
+  firstDate: string | null;
   lastDate: string | null;
   allCount: number;
+  /** Route they use most, e.g. "SDG → UGX" (completed transfers). */
+  topRoute: string | null;
 }
 
 export function customerStats(customers: Customer[], txs: Transaction[]): CustomerStat[] {
@@ -118,11 +121,17 @@ export function customerStats(customers: Customer[], txs: Transaction[]): Custom
   }
   return customers.map((customer) => {
     const mine = by.get(customer.id) ?? [];
+    const done = mine.filter((t) => t.status === "completed");
+    const routeCount = new Map<string, number>();
+    for (const t of done) routeCount.set(`${t.from} → ${t.to}`, (routeCount.get(`${t.from} → ${t.to}`) ?? 0) + 1);
+    const topRoute = Array.from(routeCount.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
     return {
       customer,
       ...totals(mine),
       allCount: mine.length,
-      lastDate: mine.reduce<string | null>((m, t) => (!m || t.date > m ? t.date : m), null),
+      firstDate: done.reduce<string | null>((m, t) => (!m || t.date < m ? t.date : m), null),
+      lastDate: done.reduce<string | null>((m, t) => (!m || t.date > m ? t.date : m), null),
+      topRoute,
     };
   });
 }
