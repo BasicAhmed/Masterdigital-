@@ -4,8 +4,8 @@ import { useMemo, useState } from "react";
 import { ArrowLeftRight, Check, Search, UserPlus, X } from "lucide-react";
 import { CURRENCIES, CURRENCY_LIST, destinationsFor, findPair, routeKey, type CurrencyCode } from "@/lib/currencies";
 import { findPair as findCorridor } from "@/lib/corridors";
-import { computeTx, type FeeSide } from "@/lib/calc";
-import { fmt, fmtMoney, fmtPct, fmtRate, fmtUsd, todayStr } from "@/lib/format";
+import { computeTx, perUnit, rateFromAmounts, type FeeSide } from "@/lib/calc";
+import { fmtMoney, fmtPct, fmtRate, fmtUsd, todayStr } from "@/lib/format";
 import { blankCustomer, nextCustomerCode, nextRef, PAYMENT_METHODS, STATUS_LABEL, type Customer, type Transaction, type TxStatus } from "@/lib/data";
 import { newId } from "@/lib/store";
 import { accountsOf, validAccount } from "@/lib/books";
@@ -46,8 +46,11 @@ export default function TransactionForm({
     const y = p && data.costUsd[p.b];
     return x && y ? +(x / y).toPrecision(6) : routeOf(f, t)?.cost;
   };
+  // Staff type BOTH amounts — what the customer hands over and what the
+  // recipient gets. The rate is worked out from them.
   const [amount, setAmount] = useState(edit ? String(edit.amount) : "");
-  const [rate, setRate] = useState(String(edit?.rate ?? routeOf("SDG", "UGX")?.rate ?? ""));
+  const [received, setReceived] = useState(edit ? String(edit.payout) : "");
+  const [confirmLoss, setConfirmLoss] = useState(false);
   const [cost, setCost] = useState(String(edit?.cost ?? costOf("SDG", "UGX") ?? ""));
   const [fee, setFee] = useState(edit?.fee ? String(edit.fee) : "");
   const [feeSide, setFeeSide] = useState<FeeSide>(edit?.feeSide ?? "to");
@@ -74,18 +77,35 @@ export default function TransactionForm({
   const toCost = data.costs[to]?.avg;
   const autoRef = useMemo(() => nextRef(date, txs), [date, txs]);
 
+  // Fees only exist on deals saved before amounts were typed directly —
+  // the agreed amounts already include any fee.
+  const legacyFee = !!edit?.fee;
+  const feeNow = legacyFee ? num(fee) : 0;
+  const gross = num(received) + (legacyFee && feeSide === "to" ? feeNow : 0);
+  const rate = rateFromAmounts(from, to, num(amount), gross);
+  const sitePer = route ? perUnit(from, to, route.rate) : 0; // units of `to` per 1 `from` on the website
+  const diffPct = sitePer && num(amount) && gross ? ((gross / num(amount) - sitePer) / sitePer) * 100 : 0;
+  const decimalsTo = CURRENCIES[to]?.decimals ?? 2;
+  function useSitePrice() {
+    if (!sitePer || !num(amount)) return;
+    const f = Math.pow(10, decimalsTo);
+    setReceived(String(Math.floor(num(amount) * sitePer * f) / f));
+    setConfirmLoss(false);
+  }
+
   const calc = computeTx({
     from,
     to,
     amount: num(amount),
-    rate: num(rate),
+    rate,
     cost: num(cost),
-    fee: num(fee),
+    fee: feeNow,
     feeSide,
     expense: num(expense),
     expenseSide,
     usd,
   });
+  const isLoss = num(amount) > 0 && num(received) > 0 && calc.profitUsd < -1e-9;
 
   // Cash on hand in the payout currency. When editing a completed transfer, its own payout is added back first.
   // With a payout category chosen, the check uses that category's balance.
@@ -101,8 +121,8 @@ export default function TransactionForm({
     setTo(t);
     setFromAccount((a: string) => validAccount(f, a));
     setToAccount((a: string) => validAccount(t, a));
-    const r = routeOf(f, t);
-    setRate(r ? String(r.rate) : "");
+    if (t !== to) setReceived(""); // an amount in the old currency means nothing now
+    setConfirmLoss(false);
     const c = costOf(f, t);
     setCost(c ? String(c) : "");
   }
@@ -127,8 +147,10 @@ export default function TransactionForm({
   async function save() {
     setProblem(null);
     if (!customer) return setProblem("اختار العميل أولاً.");
-    if (!num(amount)) return setProblem("اكتب مبلغ التحويل.");
-    if (!num(rate) || !num(cost)) return setProblem("سعر العميل وسعر التكلفة مطلوبين.");
+    if (!num(amount)) return setProblem("اكتب المبلغ المرسل.");
+    if (!num(received)) return setProblem("اكتب المبلغ المستلم.");
+    if (!rate || !num(cost)) return setProblem("سعر التكلفة مطلوب.");
+    if (isLoss && !confirmLoss) return setProblem("المعاملة خسرانة — راجع المبلغين أو أكّد الخسارة.");
     const finalRef = ref.trim() || autoRef;
     if (txs.some((t) => t.ref === finalRef && t.id !== edit?.id)) return setProblem(`المرجع ${finalRef} مستخدم في معاملة تانية.`);
     setSaving(true);
@@ -142,9 +164,9 @@ export default function TransactionForm({
         from,
         to,
         amount: num(amount),
-        rate: num(rate),
+        rate,
         cost: num(cost),
-        fee: num(fee),
+        fee: feeNow,
         feeSide,
         expense: num(expense),
         expenseSide,
@@ -298,11 +320,36 @@ export default function TransactionForm({
           {route && !route.active && <p className="mt-2 text-[11px] font-semibold text-amber-600">تنبيه: المسار ده مقفول في صفحة الأسعار.</p>}
 
           <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            <Field label={`المبلغ المستلم من العميل`}>
-              <NumInput value={amount} onChange={setAmount} suffix={from} decimals={2} placeholder="0" className="text-base" />
+            <Field label={`المبلغ المرسل (${from})`} hint="اللي دفعه العميل">
+              <NumInput
+                value={amount}
+                onChange={(v) => {
+                  setAmount(v);
+                  setConfirmLoss(false);
+                }}
+                suffix={from}
+                decimals={2}
+                placeholder="0"
+                className="text-base"
+              />
             </Field>
-            <Field label={`سعر العميل (لكل ${fmt(pair.unit)} ${pair.base})`} hint={route ? `سعر الموقع: ${fmtRate(route.rate)}` : undefined}>
-              <NumInput value={rate} onChange={setRate} suffix={pair.quote} />
+            <Field label={`المبلغ المستلم (${to})`} hint="اللي حيستلمه المستلم">
+              <NumInput
+                value={received}
+                onChange={(v) => {
+                  setReceived(v);
+                  setConfirmLoss(false);
+                }}
+                suffix={to}
+                decimals={2}
+                placeholder="0"
+                className="text-base"
+              />
+              {sitePer > 0 && num(amount) > 0 && (
+                <button type="button" onClick={useSitePrice} className="mt-1.5 text-[11px] font-semibold text-primary">
+                  استخدم سعر الموقع ({fmtMoney(num(amount) * sitePer, to)} {to})
+                </button>
+              )}
             </Field>
             {money && (
               <Field
@@ -315,14 +362,16 @@ export default function TransactionForm({
           </div>
 
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <Field label="رسوم على العميل" hint="بعملة الاستلام = تُخصم من المبلغ المستلم.">
-              <div className="flex gap-2">
-                <div className="min-w-0 flex-1">
-                  <NumInput value={fee} onChange={setFee} decimals={2} placeholder="0" />
+            {legacyFee && (
+              <Field label="رسوم (معاملة قديمة)" hint="المعاملات الجديدة: المبلغين بيشملوا الرسوم.">
+                <div className="flex gap-2">
+                  <div className="min-w-0 flex-1">
+                    <NumInput value={fee} onChange={setFee} decimals={2} placeholder="0" />
+                  </div>
+                  {sideSelect(feeSide, setFeeSide, "عملة الرسوم")}
                 </div>
-                {sideSelect(feeSide, setFeeSide, "عملة الرسوم")}
-              </div>
-            </Field>
+              </Field>
+            )}
             <Field label="تكاليف علينا (شبكة / وكيل)" hint="تُخصم من الربح.">
               <div className="flex gap-2">
                 <div className="min-w-0 flex-1">
@@ -339,8 +388,8 @@ export default function TransactionForm({
           <div className={`grid grid-cols-2 gap-px bg-border/50 ${money ? "sm:grid-cols-4" : ""}`}>
             {(
               [
-                ["العميل يدفع", `${fmtMoney(calc.customerPays, from)} ${from}`],
-                ["المستلم يستلم", `${fmtMoney(calc.payout, to)} ${to}`],
+                ["السعر (محسوب)", rate ? fmtRate(rate) : "—"],
+                ["سعر الموقع", route ? fmtRate(route.rate) : "—"],
                 ["الإيراد", fmtUsd(calc.revenueUsd)],
                 ["صافي الربح", fmtUsd(calc.profitUsd)],
               ] as const
@@ -359,9 +408,9 @@ export default function TransactionForm({
                 هامش المسار: <b className="num text-ink" dir="ltr">{fmtPct(calc.marginPercent)}</b>
               </span>
             )}
-            {money && (
+            {money && num(amount) > 0 && num(received) > 0 && (
               <span>
-                ربح فرق السعر: <b className="num text-ink" dir="ltr">{fmtMoney(calc.spread, to)} {to}</b>
+                الربح: <b className="num text-ink" dir="ltr">{fmtMoney(calc.gross + calc.spread, to)} − {fmtMoney(gross, to)} = {fmtMoney(calc.spread, to)} {to}</b>
               </span>
             )}
             <span>
@@ -381,10 +430,28 @@ export default function TransactionForm({
               السيولة المتاحة من {to} ({fmtMoney(available, to)}) أقل من المبلغ اللي حيتسلّم — راجع صفحة السيولة.
             </p>
           )}
-          {num(amount) > 0 && calc.marginPercent < 0 && (
-            <p className="border-t border-red-500/20 bg-red-500/10 px-3.5 py-2 text-[11px] font-semibold text-red-500">
-              سعر العميل أحسن من سعر التكلفة — المعاملة دي خسرانة في فرق السعر.
-            </p>
+          {isLoss ? (
+            <div className="border-t border-red-500/20 bg-red-500/10 px-3.5 py-2.5 text-[12px] font-semibold text-red-500">
+              <p>
+                خسارة: المستلم حياخد أكتر من قيمة فلوس العميل
+                {money && (
+                  <>
+                    {" "}(<span className="num" dir="ltr">{fmtUsd(calc.profitUsd)}</span>)
+                  </>
+                )}
+                . راجع المبلغين.
+              </p>
+              <label className="mt-2 flex items-center gap-2 font-medium">
+                <input type="checkbox" checked={confirmLoss} onChange={(e) => setConfirmLoss(e.target.checked)} className="size-4" />
+                أؤكد إن المعاملة دي خسرانة
+              </label>
+            </div>
+          ) : (
+            Math.abs(diffPct) > 3 && (
+              <p className="border-t border-amber-500/20 bg-amber-500/10 px-3.5 py-2 text-[12px] font-semibold text-amber-700 dark:text-amber-400">
+                السعر بعيد عن سعر الموقع بـ <span className="num" dir="ltr">{Math.abs(diffPct).toFixed(1)}%</span> — راجع المبلغين.
+              </p>
+            )
           )}
         </section>
 
@@ -447,7 +514,7 @@ export default function TransactionForm({
         {problem && <p className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs font-semibold text-red-500">{problem}</p>}
 
         <div className="flex gap-2">
-          <button onClick={save} disabled={saving} className="btn-primary flex-1 py-3.5 text-sm">
+          <button onClick={save} disabled={saving || (isLoss && !confirmLoss)} className="btn-primary flex-1 py-3.5 text-sm">
             <Check size={16} /> {saving ? "جارٍ الحفظ…" : edit ? "حفظ التعديلات" : "حفظ المعاملة"}
           </button>
           <button onClick={onClose} className="btn-ghost px-6 py-3.5 text-sm">

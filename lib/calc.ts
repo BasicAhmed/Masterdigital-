@@ -23,6 +23,14 @@ export function perUnit(from: CurrencyCode, to: CurrencyCode, quoted: number): n
   return p.base === from ? quoted / p.unit : p.unit / quoted;
 }
 
+/** Board-convention customer rate that turns `amount` of `from` into
+ *  `gross` of `to` — used when staff type both amounts instead of a rate. */
+export function rateFromAmounts(from: CurrencyCode, to: CurrencyCode, amount: number, gross: number): number {
+  const p = findPair(from, to);
+  if (!p || !amount || !gross) return 0;
+  return p.base === from ? (p.unit * gross) / amount : (p.unit * amount) / gross;
+}
+
 /** Margin % a customer rate earns over cost, for this direction. */
 export function marginOf(from: CurrencyCode, to: CurrencyCode, cost: number, rate: number): number {
   const c = perUnit(from, to, cost);
