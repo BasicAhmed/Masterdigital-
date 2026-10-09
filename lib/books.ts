@@ -189,6 +189,10 @@ export interface Movement extends Stamped {
   note: string;
   /** Category of that currency the cash went into / came out of. */
   account?: string;
+  /** The rate of this deposit / withdrawal: units of the currency per
+   *  1 USDT (e.g. 8,800 SDG). Deposits with a rate set the average cost;
+   *  withdrawals with a rate show the exchange gain or loss. */
+  rate?: number;
   createdAt: string;
 }
 
@@ -207,6 +211,8 @@ export interface LiquidityLine {
   account: string;
   /** Staff member who recorded the source record. */
   by?: string;
+  /** Rate of a manual deposit / withdrawal, when given. */
+  rate?: number;
 }
 
 /** Every cash movement, from all three sources, as one ledger.
@@ -227,6 +233,7 @@ export function liquidityLedger(txs: Transaction[], obligations: Obligation[], m
       refId: m.id,
       account: validAccount(m.currency, m.account),
       by: m.createdByName,
+      rate: m.rate,
     });
   }
   for (const t of txs) {
@@ -320,4 +327,90 @@ export function balances(lines: LiquidityLine[], usd: Record<string, number>): B
       accounts,
     };
   });
+}
+
+// ---------- Real cost of each currency (from deposits with a rate) ----------
+
+/** USDT is the base: 1 USDT always costs 1 USDT. */
+const BASE = "USDT";
+
+export interface CurrencyCost {
+  currency: CurrencyCode;
+  avg: number; // units per 1 USDT — what this currency really cost
+  units: number; // amount still counted in the average
+  costUsd: number; // what those units cost
+  deposits: number; // deposits with a rate that built it
+}
+
+export interface ExchangeLine {
+  id: string;
+  date: string;
+  currency: CurrencyCode;
+  amount: number;
+  rate: number; // rate he sold at
+  avg: number; // his average cost at that moment
+  gainUsd: number; // what he got − what it cost (negative = loss)
+  by?: string;
+}
+
+/** Walks the manual movements in date order:
+ *  - a deposit with a rate adds its units and its cost (amount ÷ rate);
+ *  - a withdrawal takes units out at the average (so the average stays the
+ *    same) and, when it has a rate, books gain/loss = amount ÷ rate − amount ÷ average.
+ *  Customer deals don't change the average. If the counted units run out,
+ *  the last average is kept until the next deposit. */
+export function costBasis(movements: Movement[]): { costs: Partial<Record<CurrencyCode, CurrencyCost>>; exchange: ExchangeLine[] } {
+  const ordered = [...movements].sort((a, b) => (a.date + a.createdAt).localeCompare(b.date + b.createdAt));
+  const pools = new Map<CurrencyCode, { units: number; costUsd: number; lastAvg: number; deposits: number }>();
+  const exchange: ExchangeLine[] = [];
+  for (const m of ordered) {
+    if (m.currency === BASE) continue;
+    const p = pools.get(m.currency) ?? { units: 0, costUsd: 0, lastAvg: 0, deposits: 0 };
+    pools.set(m.currency, p);
+    const rate = typeof m.rate === "number" && m.rate > 0 ? m.rate : 0;
+    if (m.kind === "deposit") {
+      if (!rate) continue;
+      p.units += m.amount;
+      p.costUsd += m.amount / rate;
+      p.deposits++;
+      p.lastAvg = p.units / p.costUsd;
+    } else {
+      const avg = p.units > 0 ? p.units / p.costUsd : p.lastAvg;
+      if (p.units > 0) {
+        const out = Math.min(m.amount, p.units);
+        p.costUsd -= out / avg;
+        p.units -= out;
+        if (p.units <= 1e-9) {
+          p.units = 0;
+          p.costUsd = 0;
+        }
+      }
+      if (rate && avg) {
+        exchange.push({
+          id: m.id,
+          date: m.date,
+          currency: m.currency,
+          amount: m.amount,
+          rate,
+          avg,
+          gainUsd: m.amount / rate - m.amount / avg,
+          by: m.createdByName,
+        });
+      }
+    }
+  }
+  const costs: Partial<Record<CurrencyCode, CurrencyCost>> = {};
+  pools.forEach((p, currency) => {
+    const avg = p.units > 0 ? p.units / p.costUsd : p.lastAvg;
+    if (avg > 0) costs[currency] = { currency, avg, units: p.units, costUsd: p.costUsd, deposits: p.deposits };
+  });
+  return { costs, exchange: exchange.sort((a, b) => b.date.localeCompare(a.date)) };
+}
+
+/** Units per 1 USDT used to measure PROFIT: his own average when he has
+ *  one, otherwise the market (the same table the rest of the system uses). */
+export function costTable(costs: Partial<Record<CurrencyCode, CurrencyCost>>, market: Record<string, number>): Record<string, number> {
+  const out: Record<string, number> = { ...market, [BASE]: 1 };
+  for (const c of Object.values(costs)) if (c && c.avg > 0) out[c.currency] = c.avg;
+  return out;
 }

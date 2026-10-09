@@ -82,6 +82,9 @@ export default function FinanceTab({ data }: { data: AdminData }) {
   const range = periodRange(period, custom);
   const scoped = useMemo(() => txs.filter((t) => inRange(t, range)), [txs, range.from, range.to]); // eslint-disable-line react-hooks/exhaustive-deps
   const T = totals(scoped);
+  // selling currency back (withdrawals with a rate) — separate from deal profit
+  const fx = data.exchange.filter((e) => e.date >= range.from && e.date <= range.to);
+  const fxGain = fx.reduce((sum, e) => sum + e.gainUsd, 0);
 
   const today = totals(txs.filter((t) => inRange(t, periodRange("today"))));
   const month = totals(txs.filter((t) => inRange(t, periodRange("month"))));
@@ -114,6 +117,8 @@ export default function FinanceTab({ data }: { data: AdminData }) {
       ["صافي الربح (USD)", r2(T.profit)],
       ["هامش الربح %", r2(T.margin)],
       ["متوسط الربح للمعاملة (USD)", r2(T.avgProfit)],
+      ["ربح / خسارة الصرف (USD)", r2(fxGain)],
+      ["الصافي بعد الصرف (USD)", r2(T.profit + fxGain)],
       ["قيد التنفيذ", statusCount("pending")],
       ["ملغاة", statusCount("cancelled")],
       [],
@@ -217,6 +222,24 @@ export default function FinanceTab({ data }: { data: AdminData }) {
         <Stat label="صافي الربح" value={fmtUsd(T.profit)} sub={`متوسط ${fmtUsd(T.avgProfit)} للمعاملة`} icon={<TrendingUp size={15} />} tone="good" />
         <Stat label="هامش الربح" value={fmtPct(T.margin)} sub="الربح ÷ حجم التحويلات" icon={<BadgePercent size={15} />} tone="gold" />
         <Stat label="العملاء النشطون" value={fmt(cust.length)} sub={`${newCustomers} عميل جديد في الفترة`} icon={<Users size={15} />} />
+      </div>
+
+      <div className="card-sm grid gap-3 p-4 text-sm sm:grid-cols-3">
+        <div>
+          <p className="text-[11px] text-muted">ربح المعاملات</p>
+          <p className="num mt-0.5 text-lg font-bold text-ink" dir="ltr">{fmtUsd(T.profit)}</p>
+          <p className="text-[11px] text-subtle">محسوب على تكلفة سيولتك</p>
+        </div>
+        <div>
+          <p className="text-[11px] text-muted">ربح / خسارة الصرف</p>
+          <p className={`num mt-0.5 text-lg font-bold ${fxGain < 0 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"}`} dir="ltr">{fmtUsd(fxGain)}</p>
+          <p className="text-[11px] text-subtle">{fx.length ? `من ${fx.length} عملية بيع عملة` : "سجّل السحب بسعر عشان يظهر هنا"}</p>
+        </div>
+        <div>
+          <p className="text-[11px] text-muted">الصافي</p>
+          <p className={`num mt-0.5 text-lg font-bold ${T.profit + fxGain < 0 ? "text-red-500" : "text-ink"}`} dir="ltr">{fmtUsd(T.profit + fxGain)}</p>
+          <p className="text-[11px] text-subtle">المعاملات + الصرف</p>
+        </div>
       </div>
 
       {statusCount("pending") > 0 && (

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { ArrowDownToLine, ArrowUpFromLine, Check, Download, Trash2, TriangleAlert, Wallet } from "lucide-react";
 import { CURRENCIES, CURRENCY_LIST, type CurrencyCode } from "@/lib/currencies";
-import { fmtMoney, fmtUsd, todayStr } from "@/lib/format";
+import { fmtMoney, fmtUsd, formatSmart, todayStr } from "@/lib/format";
 import { downloadCsv } from "@/lib/data";
 import { accountLabel, accountsOf, validAccount, type MovementKind } from "@/lib/books";
 import { newId } from "@/lib/store";
@@ -23,8 +23,15 @@ function MovementForm({ kind, currency, data, onClose }: { kind: MovementKind; c
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(todayStr());
   const [note, setNote] = useState("");
+  const [rate, setRate] = useState("");
   const [saving, setSaving] = useState(false);
   const a = parseFloat(amount) || 0;
+  const r = parseFloat(rate) || 0;
+  const hasRate = cur !== "USDT"; // USDT is the base — always 1
+  const myAvg = data.costs[cur]?.avg;
+  const market = data.usd[cur];
+  // a withdrawal with a rate: what he gets vs what that money cost him
+  const gain = kind === "withdraw" && a && r && myAvg ? a / r - a / myAvg : null;
   const cats = accountsOf(cur);
   const curBalance = data.balances.find((b) => b.currency === cur);
   const available = cats.length ? curBalance?.accounts.find((x) => x.id === account)?.balance ?? 0 : curBalance?.balance ?? 0;
@@ -46,6 +53,7 @@ function MovementForm({ kind, currency, data, onClose }: { kind: MovementKind; c
               onChange={(e) => {
                 const next = e.target.value as CurrencyCode;
                 setCur(next);
+                setRate("");
                 setAccount(accountsOf(next)[0]?.id ?? "");
               }}
               className="field px-3 py-2.5 text-sm font-semibold"
@@ -72,6 +80,18 @@ function MovementForm({ kind, currency, data, onClose }: { kind: MovementKind; c
           <Field label="المبلغ" hint={`الرصيد الحالي${availableLabel ? ` (${availableLabel})` : ""}: ${fmtMoney(available, cur)} ${cur}`}>
             <NumInput value={amount} onChange={setAmount} suffix={cur} decimals={2} placeholder="0" className="text-base" />
           </Field>
+          {hasRate && (
+            <Field
+              label={`السعر — كم ${cur} = 1 USDT`}
+              hint={
+                kind === "deposit"
+                  ? `بكم اشتريت؟ بيحدد تكلفتك الحقيقية${myAvg ? ` (متوسطك الآن ${formatSmart(myAvg)})` : ""}`
+                  : `بكم بعت؟ بيحسب ربح/خسارة الصرف${myAvg ? ` (متوسطك ${formatSmart(myAvg)})` : ""}`
+              }
+            >
+              <NumInput value={rate} onChange={setRate} suffix={cur} placeholder={market ? formatSmart(market) : ""} className="text-base" />
+            </Field>
+          )}
           <Field label="التاريخ">
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} dir="ltr" className="field px-3 py-2.5 font-mono text-sm" />
           </Field>
@@ -79,6 +99,15 @@ function MovementForm({ kind, currency, data, onClose }: { kind: MovementKind; c
             <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={kind === "deposit" ? "رصيد افتتاحي" : "سحب أرباح"} className="field px-3 py-2.5 text-sm" />
           </Field>
         </div>
+        {kind === "deposit" && hasRate && !r && a > 0 && (
+          <p className="text-xs text-muted">بدون سعر، الإيداع بيزيد الرصيد بس وما بيدخل في حساب التكلفة.</p>
+        )}
+        {gain !== null && (
+          <p className={`rounded-xl p-2.5 text-xs font-semibold ${gain >= 0 ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-red-500/10 text-red-600"}`}>
+            {gain >= 0 ? "ربح صرف" : "خسارة صرف"}: <span className="num" dir="ltr">{fmtUsd(Math.abs(gain))}</span> — بعت بـ{" "}
+            <span className="num" dir="ltr">{formatSmart(r)}</span> ومتوسطك <span className="num" dir="ltr">{formatSmart(myAvg!)}</span>
+          </p>
+        )}
         {kind === "withdraw" && a > available && (
           <p className="text-xs font-semibold text-amber-600">السحب أكبر من الرصيد الحالي — الرصيد حيبقى بالسالب.</p>
         )}
@@ -87,7 +116,7 @@ function MovementForm({ kind, currency, data, onClose }: { kind: MovementKind; c
           onClick={async () => {
             setSaving(true);
             try {
-              await data.upsertMovement({ id: newId(), date, currency: cur, kind, amount: a, note: note.trim(), account: validAccount(cur, account), createdAt: new Date().toISOString() });
+              await data.upsertMovement({ id: newId(), date, currency: cur, kind, amount: a, note: note.trim(), account: validAccount(cur, account), ...(hasRate && r > 0 ? { rate: r } : {}), createdAt: new Date().toISOString() });
               onClose();
             } catch {
               setSaving(false);
@@ -121,8 +150,8 @@ export default function LiquidityTab({ data }: { data: AdminData }) {
       ["العملة", "الصنف", "الرصيد"],
       ...balances.flatMap((b) => b.accounts.map((a) => [b.currency, a.label, Math.round(a.balance * 100) / 100])),
       [],
-      ["التاريخ", "العملة", "الصنف", "الحركة", "المصدر", "البيان", "بواسطة"],
-      ...lines.map((l) => [l.date, l.currency, accountsOf(l.currency).length ? accountLabel(l.currency, l.account) : "", Math.round(l.delta * 100) / 100, SOURCE_LABEL[l.source], l.label, l.by ?? ""]),
+      ["التاريخ", "العملة", "الصنف", "الحركة", "المصدر", "البيان", "بواسطة", "السعر"],
+      ...lines.map((l) => [l.date, l.currency, accountsOf(l.currency).length ? accountLabel(l.currency, l.account) : "", Math.round(l.delta * 100) / 100, SOURCE_LABEL[l.source], l.label, l.by ?? "", l.rate ?? ""]),
     ]);
   }
 
@@ -178,6 +207,17 @@ export default function LiquidityTab({ data }: { data: AdminData }) {
               <p className="num text-xs text-muted" dir="ltr">
                 ≈ {fmtUsd(b.usd)}
               </p>
+              {b.currency !== "USDT" && (
+                <p className="mt-1 text-[11px] text-subtle">
+                  {data.costs[b.currency] ? (
+                    <>
+                      تكلفتك: <b className="num text-ink" dir="ltr">{formatSmart(data.costs[b.currency]!.avg)}</b> لكل USDT
+                    </>
+                  ) : (
+                    "التكلفة من سعر السوق — سجّل إيداع بسعر"
+                  )}
+                </p>
+              )}
               {b.accounts.length > 0 && (
                 <ul className="mt-3 space-y-1 border-t border-border/50 pt-2.5">
                   {b.accounts.map((a) => (
@@ -249,6 +289,21 @@ export default function LiquidityTab({ data }: { data: AdminData }) {
                   <p className="mt-0.5 text-[11px] text-subtle">
                     <span className="num" dir="ltr">{l.date}</span>
                     {l.by && <> · {l.by}</>}
+                    {l.rate && (
+                      <>
+                        {" · بسعر "}
+                        <span className="num" dir="ltr">{formatSmart(l.rate)}</span>
+                      </>
+                    )}
+                    {(() => {
+                      const x = l.source === "manual" ? data.exchange.find((e) => e.id === l.refId) : undefined;
+                      return x ? (
+                        <span className={x.gainUsd >= 0 ? "text-emerald-600" : "text-red-500"}>
+                          {" · "}
+                          {x.gainUsd >= 0 ? "ربح" : "خسارة"} <span className="num" dir="ltr">{fmtUsd(Math.abs(x.gainUsd))}</span>
+                        </span>
+                      ) : null;
+                    })()}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">

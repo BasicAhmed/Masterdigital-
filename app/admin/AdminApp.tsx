@@ -40,6 +40,10 @@ import {
 } from "@/lib/data";
 import {
   balances as computeBalances,
+  costBasis,
+  costTable,
+  type CurrencyCost,
+  type ExchangeLine,
   deleteMovement,
   deleteObligation,
   getMovements,
@@ -118,6 +122,12 @@ export interface AdminData {
   movements: Movement[];
   liquidity: LiquidityLine[];
   balances: Balance[];
+  /** What each currency really cost him (from deposits with a rate). */
+  costs: Partial<Record<string, CurrencyCost>>;
+  /** Units per 1 USDT used for PROFIT: his average, else the market. */
+  costUsd: Record<string, number>;
+  /** Gain / loss from selling currency back (withdrawals with a rate). */
+  exchange: ExchangeLine[];
   alerts: RateAlert[];
   feedback: Feedback[];
   me: Me;
@@ -257,6 +267,8 @@ export default function AdminApp({ me, onSignOut }: { me: Me; onSignOut?: () => 
 
   const liquidity = useMemo(() => liquidityLedger(txs, obligations, movements), [txs, obligations, movements]);
   const balances = useMemo(() => computeBalances(liquidity, usd), [liquidity, usd]);
+  const { costs, exchange } = useMemo(() => costBasis(movements), [movements]);
+  const costUsd = useMemo(() => costTable(costs, usd), [costs, usd]);
 
   const data: AdminData = useMemo(
     () => ({
@@ -268,6 +280,9 @@ export default function AdminApp({ me, onSignOut }: { me: Me; onSignOut?: () => 
       movements,
       liquidity,
       balances,
+      costs,
+      costUsd,
+      exchange,
       alerts,
       feedback,
       me,
@@ -372,7 +387,7 @@ export default function AdminApp({ me, onSignOut }: { me: Me; onSignOut?: () => 
           const before = movements.find((x) => x.id === input.id);
           const m = stamp(input, !before);
           await saveMovement(m);
-          logActivity({ kind: "movement", action: before ? "update" : "create", refId: m.id, summary: `${m.kind === "deposit" ? "إيداع" : "سحب"} ${fmtMoney(m.amount, m.currency)} ${m.currency}${m.note ? ` — ${m.note}` : ""}` });
+          logActivity({ kind: "movement", action: before ? "update" : "create", refId: m.id, summary: `${m.kind === "deposit" ? "إيداع" : "سحب"} ${fmtMoney(m.amount, m.currency)} ${m.currency}${m.rate ? ` بسعر ${m.rate}` : ""}${m.note ? ` — ${m.note}` : ""}` });
           setMovements((prev) => put(prev, m));
         }),
       removeMovement: (id) =>
@@ -407,7 +422,7 @@ export default function AdminApp({ me, onSignOut }: { me: Me; onSignOut?: () => 
           setFeedback((prev) => prev.filter((x) => x.id !== id));
         }),
     }),
-    [routes, usd, customers, txs, obligations, movements, liquidity, balances, alerts, feedback, guard, me, can, staff, activity, reloadActivity]
+    [routes, usd, customers, txs, obligations, movements, liquidity, balances, costs, costUsd, exchange, alerts, feedback, guard, me, can, staff, activity, reloadActivity]
   );
 
   const badge: Partial<Record<Tab, number>> = {

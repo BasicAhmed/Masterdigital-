@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { ArrowLeftRight, Check, Search, UserPlus, X } from "lucide-react";
 import { CURRENCIES, CURRENCY_LIST, destinationsFor, findPair, routeKey, type CurrencyCode } from "@/lib/currencies";
+import { findPair as findCorridor } from "@/lib/corridors";
 import { computeTx, type FeeSide } from "@/lib/calc";
 import { fmt, fmtMoney, fmtPct, fmtRate, fmtUsd, todayStr } from "@/lib/format";
 import { blankCustomer, nextCustomerCode, nextRef, PAYMENT_METHODS, STATUS_LABEL, type Customer, type Transaction, type TxStatus } from "@/lib/data";
@@ -35,9 +36,19 @@ export default function TransactionForm({
   const [from, setFrom] = useState<CurrencyCode>(edit?.from ?? "SDG");
   const [to, setTo] = useState<CurrencyCode>(edit?.to ?? "UGX");
   const routeOf = (f: CurrencyCode, t: CurrencyCode) => routes.find((r) => r.id === routeKey(f, t));
+  /** Cost of a route from what his money really cost him (his liquidity
+   *  average per currency, or the market where he has none). Same quoting
+   *  as the route's market price: units of the pair's first currency per 1
+   *  of the second. The customer rate still comes from the website. */
+  const costOf = (f: CurrencyCode, t: CurrencyCode): number | undefined => {
+    const p = findCorridor(f, t);
+    const x = p && data.costUsd[p.a];
+    const y = p && data.costUsd[p.b];
+    return x && y ? +(x / y).toPrecision(6) : routeOf(f, t)?.cost;
+  };
   const [amount, setAmount] = useState(edit ? String(edit.amount) : "");
   const [rate, setRate] = useState(String(edit?.rate ?? routeOf("SDG", "UGX")?.rate ?? ""));
-  const [cost, setCost] = useState(String(edit?.cost ?? routeOf("SDG", "UGX")?.cost ?? ""));
+  const [cost, setCost] = useState(String(edit?.cost ?? costOf("SDG", "UGX") ?? ""));
   const [fee, setFee] = useState(edit?.fee ? String(edit.fee) : "");
   const [feeSide, setFeeSide] = useState<FeeSide>(edit?.feeSide ?? "to");
   const [expense, setExpense] = useState(edit?.expense ? String(edit.expense) : "");
@@ -57,7 +68,10 @@ export default function TransactionForm({
   const customer = customers.find((c) => c.id === customerId) ?? null;
   const pair = findPair(from, to)!;
   const route = routeOf(from, to);
-  const usd = data.usd;
+  // profit is turned into dollars with his own rates (his formula: ÷ rate of the received currency)
+  const usd = data.costUsd;
+  const fromCost = data.costs[from]?.avg;
+  const toCost = data.costs[to]?.avg;
   const autoRef = useMemo(() => nextRef(date, txs), [date, txs]);
 
   const calc = computeTx({
@@ -89,7 +103,8 @@ export default function TransactionForm({
     setToAccount((a: string) => validAccount(t, a));
     const r = routeOf(f, t);
     setRate(r ? String(r.rate) : "");
-    setCost(r ? String(r.cost) : "");
+    const c = costOf(f, t);
+    setCost(c ? String(c) : "");
   }
 
   const matches = useMemo(() => {
@@ -286,11 +301,14 @@ export default function TransactionForm({
             <Field label={`المبلغ المستلم من العميل`}>
               <NumInput value={amount} onChange={setAmount} suffix={from} decimals={2} placeholder="0" className="text-base" />
             </Field>
-            <Field label={`سعر العميل (لكل ${fmt(pair.unit)} ${pair.base})`} hint={route ? `سعر المسار الحالي: ${fmtRate(route.rate)}` : undefined}>
+            <Field label={`سعر العميل (لكل ${fmt(pair.unit)} ${pair.base})`} hint={route ? `سعر الموقع: ${fmtRate(route.rate)}` : undefined}>
               <NumInput value={rate} onChange={setRate} suffix={pair.quote} />
             </Field>
             {money && (
-              <Field label="سعر التكلفة" hint={route ? `تكلفة المسار الحالية: ${fmtRate(route.cost)}` : undefined}>
+              <Field
+                label="سعر التكلفة (من السيولة)"
+                hint={`${from} ${fromCost ? fmtRate(fromCost) : "سعر السوق"} · ${to} ${toCost ? fmtRate(toCost) : "سعر السوق"}${from === "USDT" || to === "USDT" ? " · USDT = 1" : ""}`}
+              >
                 <NumInput value={cost} onChange={setCost} suffix={pair.quote} />
               </Field>
             )}
