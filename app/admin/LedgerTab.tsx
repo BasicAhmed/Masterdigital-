@@ -375,9 +375,13 @@ export default function LedgerTab({ data }: { data: AdminData }) {
                       <KindChip kind={o.kind} />
                       <span className="truncate font-semibold text-ink">{o.party}</span>
                     </p>
-                    <p className="num mt-1 text-[11px] text-subtle" dir="ltr">
-                      {o.date}
-                      {o.dueDate && ` → ${o.dueDate}`}
+                    <p className="mt-1 text-[11px] text-subtle">
+                      <span className="num" dir="ltr">
+                        {o.date}
+                        {o.dueDate && ` → ${o.dueDate}`}
+                      </span>
+                      {o.createdByName && <> · {o.createdByName}</>}
+                      {o.updatedByName && <> · آخر تعديل {o.updatedByName}</>}
                     </p>
                   </div>
                   <div className="shrink-0 text-left">

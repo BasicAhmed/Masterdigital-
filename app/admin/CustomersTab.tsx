@@ -113,6 +113,8 @@ function CustomerForm({ initial, data, onClose }: { initial: Customer; data: Adm
 function CustomerDetail({ stat, data, onBack }: { stat: CustomerStat; data: AdminData; onBack: () => void }) {
   const { customer } = stat;
   const st = customerStatus(stat);
+  const money = data.can("finance");
+  const manage = data.can("customers");
   const wa = customerWaLink(customer);
   const mine = useMemo(() => data.txs.filter((t) => t.customerId === customer.id), [data.txs, customer.id]);
   const routes = useMemo(() => groupBy(mine, (t) => `${t.from} → ${t.to}`).sort((a, b) => b.count - a.count).slice(0, 5), [mine]);
@@ -141,6 +143,8 @@ function CustomerDetail({ stat, data, onBack }: { stat: CustomerStat; data: Admi
             <span className="num" dir="ltr">{customer.phone || "بدون رقم"}</span>
             {customer.country && <> · {customer.country}</>}
             <> · عميل منذ <span className="num" dir="ltr">{customer.createdAt.slice(0, 10)}</span></>
+            {customer.createdByName && <> · أضافه {customer.createdByName}</>}
+            {customer.updatedByName && <> · آخر تعديل {customer.updatedByName}</>}
           </p>
           {customer.notes && <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted">{customer.notes}</p>}
         </div>
@@ -150,16 +154,22 @@ function CustomerDetail({ stat, data, onBack }: { stat: CustomerStat; data: Admi
               <MessageCircle size={14} /> واتساب
             </a>
           )}
-          <button onClick={() => data.openTxForm({ customerId: customer.id })} className="btn-primary px-4 py-2.5 text-xs">
-            <Plus size={14} /> معاملة لهذا العميل
-          </button>
-          <button onClick={() => setEditing(true)} className="btn-ghost px-4 py-2.5 text-xs">
-            <Pencil size={14} /> تعديل
-          </button>
-          <button onClick={() => exportTransactions(mine, `customer-${customer.name}`)} disabled={!mine.length} className="btn-ghost px-4 py-2.5 text-xs disabled:opacity-40">
-            <Download size={14} /> كشف حساب
-          </button>
-          {mine.length === 0 &&
+          {data.can("tx_add") && (
+            <button onClick={() => data.openTxForm({ customerId: customer.id })} className="btn-primary px-4 py-2.5 text-xs">
+              <Plus size={14} /> معاملة لهذا العميل
+            </button>
+          )}
+          {manage && (
+            <button onClick={() => setEditing(true)} className="btn-ghost px-4 py-2.5 text-xs">
+              <Pencil size={14} /> تعديل
+            </button>
+          )}
+          {money && (
+            <button onClick={() => exportTransactions(mine, `customer-${customer.name}`)} disabled={!mine.length} className="btn-ghost px-4 py-2.5 text-xs disabled:opacity-40">
+              <Download size={14} /> كشف حساب
+            </button>
+          )}
+          {manage && mine.length === 0 &&
             (confirming ? (
               <button onClick={async () => { await data.removeCustomer(customer.id); onBack(); }} className="rounded-full bg-red-600 px-4 py-2.5 text-xs font-semibold text-white">
                 تأكيد الحذف
@@ -172,12 +182,14 @@ function CustomerDetail({ stat, data, onBack }: { stat: CustomerStat; data: Admi
         </div>
       </div>
 
+      {money && (
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="عدد المعاملات" value={String(stat.count)} sub={stat.allCount !== stat.count ? `${stat.allCount - stat.count} غير مكتملة` : "مكتملة"} />
-        <Stat label="حجم التحويلات" value={fmtUsd(stat.volume)} sub={`متوسط المعاملة ${fmtUsd(stat.avgTicket)}`} />
-        <Stat label="الإيراد" value={fmtUsd(stat.revenue)} />
-        <Stat label="الربح من العميل" value={fmtUsd(stat.profit)} sub={`هامش ${fmtPct(stat.margin)}`} tone="good" />
-      </div>
+          <Stat label="عدد المعاملات" value={String(stat.count)} sub={stat.allCount !== stat.count ? `${stat.allCount - stat.count} غير مكتملة` : "مكتملة"} />
+          <Stat label="حجم التحويلات" value={fmtUsd(stat.volume)} sub={`متوسط المعاملة ${fmtUsd(stat.avgTicket)}`} />
+          <Stat label="الإيراد" value={fmtUsd(stat.revenue)} />
+          <Stat label="الربح من العميل" value={fmtUsd(stat.profit)} sub={`هامش ${fmtPct(stat.margin)}`} tone="good" />
+        </div>
+      )}
 
       <div className="card-sm grid grid-cols-2 gap-3 p-4 text-sm sm:grid-cols-4">
         {(
@@ -213,23 +225,27 @@ function CustomerDetail({ stat, data, onBack }: { stat: CustomerStat; data: Admi
           )}
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setOblForm({ ...blankObligation(), party: customer.name, customerId: customer.id })} className="btn-ghost px-3.5 py-2 text-xs">
-            <Plus size={13} /> مستحق جديد
-          </button>
-          <button onClick={() => data.goTo("ledger")} className="btn-ghost px-3.5 py-2 text-xs">
-            صفحة الحسابات
-          </button>
+          {data.can("ledger") && (
+            <button onClick={() => setOblForm({ ...blankObligation(), party: customer.name, customerId: customer.id })} className="btn-ghost px-3.5 py-2 text-xs">
+              <Plus size={13} /> مستحق جديد
+            </button>
+          )}
+          {data.can("ledger") && (
+            <button onClick={() => data.goTo("ledger")} className="btn-ghost px-3.5 py-2 text-xs">
+              صفحة الحسابات
+            </button>
+          )}
         </div>
       </div>
 
       {routes.length > 0 && (
         <Panel title="أكثر المسارات استخداماً">
-          <RankBars rows={routes.map((r) => ({ key: r.key, label: <span className="font-mono text-xs" dir="ltr">{r.label}</span>, value: r.count, display: `${r.count}`, sub: fmtUsd(r.volume) }))} />
+          <RankBars rows={routes.map((r) => ({ key: r.key, label: <span className="font-mono text-xs" dir="ltr">{r.label}</span>, value: r.count, display: `${r.count}`, sub: money ? fmtUsd(r.volume) : undefined }))} />
         </Panel>
       )}
 
       <h3 className="pt-2 font-display text-sm font-bold text-ink">سجل المعاملات ({mine.length})</h3>
-      {mine.length ? <TxTable txs={mine} hideCustomer onOpen={(t) => setOpenId(t.id)} /> : <Empty title="لا توجد معاملات لهذا العميل بعد" />}
+      {mine.length ? <TxTable txs={mine} hideCustomer money={money} onOpen={(t) => setOpenId(t.id)} /> : <Empty title="لا توجد معاملات لهذا العميل بعد" />}
 
       {editing && <CustomerForm initial={customer} data={data} onClose={() => setEditing(false)} />}
       {oblForm && <ObligationForm initial={oblForm} data={data} onClose={() => setOblForm(null)} />}
@@ -406,6 +422,8 @@ export default function CustomersTab({ data }: { data: AdminData }) {
   }
 
   const newCustomer = () => blankCustomer(nextCustomerCode(data.customers));
+  const money = data.can("finance");
+  const manage = data.can("customers");
 
   return (
     <div className="space-y-4">
@@ -419,17 +437,21 @@ export default function CustomersTab({ data }: { data: AdminData }) {
             <option value="code">رقم العميل</option>
             <option value="recent">آخر تعامل</option>
             <option value="count">الأكثر معاملات</option>
-            <option value="profit">الأعلى ربحاً</option>
-            <option value="volume">الأعلى حجماً</option>
+            {money && <option value="profit">الأعلى ربحاً</option>}
+            {money && <option value="volume">الأعلى حجماً</option>}
             <option value="name">الاسم</option>
           </select>
         </div>
-        <button onClick={() => setImporting(true)} className="btn-ghost px-4 py-2.5 text-xs">
-          <FileUp size={14} /> استيراد
-        </button>
-        <button onClick={exportAll} disabled={!list.length} className="btn-ghost px-4 py-2.5 text-xs disabled:opacity-40">
-          <Download size={14} /> تصدير
-        </button>
+        {manage && (
+          <button onClick={() => setImporting(true)} className="btn-ghost px-4 py-2.5 text-xs">
+            <FileUp size={14} /> استيراد
+          </button>
+        )}
+        {manage && (
+          <button onClick={exportAll} disabled={!list.length} className="btn-ghost px-4 py-2.5 text-xs disabled:opacity-40">
+            <Download size={14} /> تصدير
+          </button>
+        )}
         <button onClick={() => setAdding(true)} className="btn-primary px-4 py-2.5 text-xs">
           <UserPlus size={14} /> عميل جديد
         </button>
@@ -463,9 +485,11 @@ export default function CustomersTab({ data }: { data: AdminData }) {
           hint="استورد قائمة عملائك من ملف، أو أضفهم واحد واحد."
           action={
             <div className="flex flex-wrap justify-center gap-2">
-              <button onClick={() => setImporting(true)} className="btn-primary px-5 py-3 text-sm">
-                <FileUp size={15} /> استيراد من ملف
-              </button>
+              {manage && (
+                <button onClick={() => setImporting(true)} className="btn-primary px-5 py-3 text-sm">
+                  <FileUp size={15} /> استيراد من ملف
+                </button>
+              )}
               <button onClick={() => setAdding(true)} className="btn-ghost px-5 py-3 text-sm">
                 <UserPlus size={15} /> عميل جديد
               </button>
@@ -520,7 +544,7 @@ export default function CustomersTab({ data }: { data: AdminData }) {
                   <th className="px-3 py-3 font-semibold">الحالة</th>
                   <th className="px-3 py-3 font-semibold">المسار المفضل</th>
                   <th className="px-3 py-3 font-semibold">المعاملات</th>
-                  <th className="px-3 py-3 font-semibold">الربح</th>
+                  {money && <th className="px-3 py-3 font-semibold">الربح</th>}
                   <th className="px-3 py-3 font-semibold">آخر معاملة</th>
                   <th className="px-3 py-3" aria-label="واتساب" />
                 </tr>
@@ -545,9 +569,11 @@ export default function CustomersTab({ data }: { data: AdminData }) {
                         {x.topRoute ?? "—"}
                       </td>
                       <td className="num px-3 py-3 font-semibold text-ink">{x.count}</td>
-                      <td className="num px-3 py-3 font-semibold text-emerald-600 dark:text-emerald-400" dir="ltr">
-                        {fmtUsd(x.profit)}
-                      </td>
+                      {money && (
+                        <td className="num px-3 py-3 font-semibold text-emerald-600 dark:text-emerald-400" dir="ltr">
+                          {fmtUsd(x.profit)}
+                        </td>
+                      )}
                       <td className="px-3 py-3 text-xs text-muted">
                         <span className="num block" dir="ltr">
                           {x.lastDate ?? "—"}

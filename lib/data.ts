@@ -1,10 +1,11 @@
 import type { CurrencyCode } from "./currencies";
 import type { FeeSide } from "./calc";
+import type { Stamped } from "./activity";
 import { listDocs, removeDoc, saveDoc, newId } from "./store";
 
 export type Gender = "male" | "female" | "";
 
-export interface Customer {
+export interface Customer extends Stamped {
   id: string;
   /** Customer number staff use (رقم العميل) — the ID column of the old sheet. */
   code?: number;
@@ -37,7 +38,7 @@ export const PAYMENT_METHODS = ["بنكك", "USDT", "Vodafone Cash", "M-Pesa", "
 
 /** A logged transfer. Every calculated figure is frozen at save time —
  *  later rate changes never rewrite history. */
-export interface Transaction {
+export interface Transaction extends Stamped {
   id: string;
   ref: string;
   date: string; // YYYY-MM-DD

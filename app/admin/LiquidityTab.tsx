@@ -121,8 +121,8 @@ export default function LiquidityTab({ data }: { data: AdminData }) {
       ["العملة", "الصنف", "الرصيد"],
       ...balances.flatMap((b) => b.accounts.map((a) => [b.currency, a.label, Math.round(a.balance * 100) / 100])),
       [],
-      ["التاريخ", "العملة", "الصنف", "الحركة", "المصدر", "البيان"],
-      ...lines.map((l) => [l.date, l.currency, accountsOf(l.currency).length ? accountLabel(l.currency, l.account) : "", Math.round(l.delta * 100) / 100, SOURCE_LABEL[l.source], l.label]),
+      ["التاريخ", "العملة", "الصنف", "الحركة", "المصدر", "البيان", "بواسطة"],
+      ...lines.map((l) => [l.date, l.currency, accountsOf(l.currency).length ? accountLabel(l.currency, l.account) : "", Math.round(l.delta * 100) / 100, SOURCE_LABEL[l.source], l.label, l.by ?? ""]),
     ]);
   }
 
@@ -246,7 +246,10 @@ export default function LiquidityTab({ data }: { data: AdminData }) {
                     {accountsOf(l.currency).length > 0 && <span className="chip bg-surface2 text-muted">{accountLabel(l.currency, l.account)}</span>}
                     <span className="truncate text-sm text-ink">{l.label}</span>
                   </p>
-                  <p className="num mt-0.5 text-[11px] text-subtle" dir="ltr">{l.date}</p>
+                  <p className="mt-0.5 text-[11px] text-subtle">
+                    <span className="num" dir="ltr">{l.date}</span>
+                    {l.by && <> · {l.by}</>}
+                  </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <span className={`num text-sm font-bold ${l.delta >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"}`} dir="ltr">

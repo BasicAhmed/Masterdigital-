@@ -1,34 +1,87 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Public: the site shows rates, rate history and contact details to everyone.
+
+    // ---------- Who is asking ----------
+    // Every login has a record at staff/{uid}: name, role (owner | staff),
+    // status (active | pending | disabled) and a list of permissions.
+    function signedIn() { return request.auth != null; }
+    function staffPath() { return /databases/$(database)/documents/staff/$(request.auth.uid); }
+    function me() { return get(staffPath()).data; }
+    function active() { return signedIn() && exists(staffPath()) && me().status == "active"; }
+    function isOwner() { return active() && me().role == "owner"; }
+    function can(p) { return isOwner() || (active() && p in me().perms); }
+
+    // ---------- Staff accounts ----------
+    match /staff/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || can("activity"));
+      // The very first login claims ownership — once (meta/owner is written in the same batch).
+      // Anyone else without a record may only ask for access, with no permissions.
+      allow create: if signedIn() && request.auth.uid == uid && (
+        (request.resource.data.role == "owner" && request.resource.data.status == "active"
+          && !exists(/databases/$(database)/documents/meta/owner)
+          && getAfter(/databases/$(database)/documents/meta/owner).data.uid == uid)
+        || (request.resource.data.role == "staff" && request.resource.data.status == "pending"
+          && request.resource.data.perms.size() == 0)
+      );
+      // Only the owner adds, approves, changes or disables staff.
+      allow create, update, delete: if isOwner();
+    }
+    match /meta/owner {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid
+        && getAfter(staffPath()).data.role == "owner";
+      allow update, delete: if false;
+    }
+
+    // ---------- Activity log: written by the person acting, never changed ----------
+    match /activity/{id} {
+      allow read: if can("activity");
+      allow create: if active() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // ---------- Public: the site shows rates and contact details to everyone ----------
     match /rates/{corridor} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if can("rates");
     }
     match /rateHistory/{corridor} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if can("rates");
     }
     match /settings/{doc} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if (doc in ["margin", "flows", "usdtPrices"] && can("rates"))
+        || (doc in ["contact", "bankAccounts", "students"] && can("contact"))
+        || (doc == "dailyTarget" && can("finance"));
     }
-    // Private: customers and transactions are staff-only.
+
+    // ---------- Private records ----------
     match /customers/{doc} {
-      allow read, write: if request.auth != null;
+      allow read: if active();
+      allow create: if can("customers") || can("tx_add");
+      allow update, delete: if can("customers");
     }
     match /transactions/{doc} {
-      allow read, write: if request.auth != null;
+      allow read: if active();
+      allow create: if can("tx_add") && request.resource.data.createdBy == request.auth.uid;
+      // tx_add may change only what they recorded themselves; tx_edit may change anything
+      allow update: if can("tx_edit")
+        || (can("tx_add") && resource.data.createdBy == request.auth.uid
+            && request.resource.data.createdBy == request.auth.uid);
+      allow delete: if can("tx_edit");
     }
     match /obligations/{doc} {
-      allow read, write: if request.auth != null;
+      allow read: if active();
+      allow write: if can("ledger");
     }
     match /movements/{doc} {
-      allow read, write: if request.auth != null;
+      allow read: if active();
+      allow write: if can("liquidity");
     }
-    // Sent in by site visitors: anyone may CREATE one well-formed record,
-    // only staff can read, change or delete them.
+
+    // ---------- Sent in by site visitors: anyone may CREATE one well-formed record ----------
     match /alerts/{doc} {
       allow create: if request.resource.data.status == "active"
         && request.resource.data.target is number
@@ -36,7 +89,7 @@ service cloud.firestore {
         && request.resource.data.whatsapp.size() <= 30
         && request.resource.data.name.size() <= 80
         && request.resource.data.email.size() <= 120;
-      allow read, update, delete: if request.auth != null;
+      allow read, update, delete: if can("inbox");
     }
     match /feedback/{doc} {
       allow create: if request.resource.data.status == "new"
@@ -44,7 +97,7 @@ service cloud.firestore {
         && request.resource.data.message.size() <= 2000
         && request.resource.data.name.size() <= 80
         && request.resource.data.contact.size() <= 120;
-      allow read, update, delete: if request.auth != null;
+      allow read, update, delete: if can("inbox");
     }
   }
 }

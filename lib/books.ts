@@ -3,6 +3,7 @@ import { CURRENCY_LIST } from "./currencies";
 import type { Transaction } from "./data";
 import { listDocs, removeDoc, saveDoc, newId } from "./store";
 import { toUsd } from "./calc";
+import type { Stamped } from "./activity";
 
 /** The business's books beyond single transfers: who owes whom (obligations)
  *  and how much cash is on hand in each currency (liquidity). Both are
@@ -20,7 +21,7 @@ export interface ObligationPayment {
   note: string;
 }
 
-export interface Obligation {
+export interface Obligation extends Stamped {
   id: string;
   kind: ObligationKind;
   party: string; // person or company name
@@ -179,7 +180,7 @@ export type MovementKind = "deposit" | "withdraw";
 
 /** A manual change to the funds: opening balance, top-up, owner withdrawal,
  *  correction after a count. Everything else moves cash on its own. */
-export interface Movement {
+export interface Movement extends Stamped {
   id: string;
   date: string;
   currency: CurrencyCode;
@@ -204,6 +205,8 @@ export interface LiquidityLine {
   refId: string;
   /** Category inside the currency ("" = unassigned). */
   account: string;
+  /** Staff member who recorded the source record. */
+  by?: string;
 }
 
 /** Every cash movement, from all three sources, as one ledger.
@@ -223,6 +226,7 @@ export function liquidityLedger(txs: Transaction[], obligations: Obligation[], m
       label: m.note || (m.kind === "deposit" ? "إيداع" : "سحب"),
       refId: m.id,
       account: validAccount(m.currency, m.account),
+      by: m.createdByName,
     });
   }
   for (const t of txs) {
@@ -230,8 +234,8 @@ export function liquidityLedger(txs: Transaction[], obligations: Obligation[], m
     const paidIn = t.amount + (t.feeSide === "from" ? t.fee : 0);
     const inAccount = validAccount(t.from, t.fromAccount);
     const outAccount = validAccount(t.to, t.toAccount);
-    out.push({ date: t.date, currency: t.from, delta: paidIn, source: "transaction", label: `${t.ref} — ${t.customerName}`, refId: t.id, account: inAccount });
-    out.push({ date: t.date, currency: t.to, delta: -t.payout, source: "transaction", label: `${t.ref} — ${t.customerName}`, refId: t.id, account: outAccount });
+    out.push({ date: t.date, currency: t.from, delta: paidIn, source: "transaction", label: `${t.ref} — ${t.customerName}`, refId: t.id, account: inAccount, by: t.createdByName });
+    out.push({ date: t.date, currency: t.to, delta: -t.payout, source: "transaction", label: `${t.ref} — ${t.customerName}`, refId: t.id, account: outAccount, by: t.createdByName });
     if (t.expense) {
       out.push({
         date: t.date,
@@ -241,6 +245,7 @@ export function liquidityLedger(txs: Transaction[], obligations: Obligation[], m
         label: `${t.ref} — تكاليف`,
         refId: t.id,
         account: t.expenseSide === "from" ? inAccount : outAccount,
+        by: t.createdByName,
       });
     }
   }
@@ -255,6 +260,7 @@ export function liquidityLedger(txs: Transaction[], obligations: Obligation[], m
         label: `${o.kind === "receivable" ? "سلفة إلى" : "استلام من"} ${o.party}`,
         refId: o.id,
         account: UNASSIGNED,
+        by: o.createdByName,
       });
     }
     for (const p of o.payments) {
@@ -266,6 +272,7 @@ export function liquidityLedger(txs: Transaction[], obligations: Obligation[], m
         label: `${o.kind === "receivable" ? "سداد من" : "سداد إلى"} ${o.party}`,
         refId: o.id,
         account: UNASSIGNED,
+        by: o.createdByName,
       });
     }
   }

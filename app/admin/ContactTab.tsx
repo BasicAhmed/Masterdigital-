@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { logActivity } from "@/lib/activity";
 import { Check, Clock, ExternalLink, Mail, Megaphone, RefreshCw, Save } from "lucide-react";
 import WhatsAppIcon from "@/components/WhatsAppIcon";
 import { getContactSettings, setContactSettings, type ContactSettings } from "@/lib/settings";
@@ -86,6 +87,7 @@ export default function ContactTab({ onError }: { onError: (msg: string) => void
     setSaving(true);
     try {
       await setContactSettings(clean);
+      logActivity({ kind: "contact", action: "update", summary: "تعديل بيانات التواصل" });
       setForm(clean);
       setSaved(clean);
       setJustSaved(true);

@@ -13,6 +13,8 @@ import { exportTransactions } from "./txExport";
 export function TxDetail({ tx, data, onClose }: { tx: Transaction; data: AdminData; onClose: () => void }) {
   const [confirming, setConfirming] = useState(false);
   const pair = findPair(tx.from, tx.to);
+  const money = data.can("finance");
+  const editable = data.canEditTx(tx);
   const rows: [string, React.ReactNode][] = [
     ["التاريخ", <span className="num" dir="ltr" key="d">{tx.date}</span>],
     ["العميل", tx.customerName],
@@ -24,20 +26,26 @@ export function TxDetail({ tx, data, onClose }: { tx: Transaction; data: AdminDa
     ["التكاليف", tx.expense ? `${fmtMoney(tx.expense, tx.expenseSide === "from" ? tx.from : tx.to)} ${tx.expenseSide === "from" ? tx.from : tx.to}` : "—"],
     ["المستلم يستلم", `${fmtMoney(tx.payout, tx.to)} ${tx.to}`],
     ["هامش المسار", fmtPct(tx.marginPercent)],
-    ["حجم المعاملة", fmtUsd(tx.volumeUsd)],
-    ["الإيراد", fmtUsd(tx.revenueUsd)],
-    ["صافي الربح", fmtUsd(tx.profitUsd)],
+    ...(money
+      ? ([
+          ["حجم المعاملة", fmtUsd(tx.volumeUsd)],
+          ["الإيراد", fmtUsd(tx.revenueUsd)],
+          ["صافي الربح", fmtUsd(tx.profitUsd)],
+        ] as [string, React.ReactNode][])
+      : []),
     ["طريقة الدفع", tx.payMethod || "—"],
     ["طريقة التسليم", tx.payoutMethod || "—"],
     ["المستلم", tx.recipient || "—"],
     ["ملاحظات", tx.notes || "—"],
+    ["سجّلها", tx.createdByName || "غير معروف"],
+    ...(tx.updatedByName ? ([["آخر تعديل", `${tx.updatedByName} · ${tx.updatedAt?.slice(0, 16).replace("T", " ") ?? ""}`]] as [string, React.ReactNode][]) : []),
   ];
   return (
     <Modal title={`معاملة ${tx.ref}`} onClose={onClose}>
       <div className="mb-4 flex items-center justify-between gap-3">
         <StatusChip status={tx.status} />
         <div className="flex gap-1.5">
-          {(Object.keys(STATUS_LABEL) as TxStatus[])
+          {editable && (Object.keys(STATUS_LABEL) as TxStatus[])
             .filter((s) => s !== tx.status)
             .map((s) => (
               <button key={s} onClick={() => data.upsertTx({ ...tx, status: s })} className="btn-ghost px-3 py-1.5 text-[11px]">
@@ -56,7 +64,8 @@ export function TxDetail({ tx, data, onClose }: { tx: Transaction; data: AdminDa
           </div>
         ))}
       </dl>
-      <div className="mt-4 flex gap-2">
+      {!editable && <p className="mt-3 text-center text-[11px] text-subtle">ما عندك صلاحية تعدّل المعاملة دي.</p>}
+      {editable && <div className="mt-4 flex gap-2">
         <button
           onClick={() => {
             onClose();
@@ -66,7 +75,7 @@ export function TxDetail({ tx, data, onClose }: { tx: Transaction; data: AdminDa
         >
           <Pencil size={15} /> تعديل
         </button>
-        {confirming ? (
+        {!data.can("tx_edit") ? null : confirming ? (
           <button
             onClick={async () => {
               await data.removeTx(tx.id);
@@ -81,12 +90,12 @@ export function TxDetail({ tx, data, onClose }: { tx: Transaction; data: AdminDa
             <Trash2 size={15} /> حذف
           </button>
         )}
-      </div>
+      </div>}
     </Modal>
   );
 }
 
-export function TxTable({ txs, onOpen, hideCustomer }: { txs: Transaction[]; onOpen: (t: Transaction) => void; hideCustomer?: boolean }) {
+export function TxTable({ txs, onOpen, hideCustomer, money = true }: { txs: Transaction[]; onOpen: (t: Transaction) => void; hideCustomer?: boolean; money?: boolean }) {
   return (
     <>
     {/* Phone: one card per transaction */}
@@ -105,12 +114,15 @@ export function TxTable({ txs, onOpen, hideCustomer }: { txs: Transaction[]; onO
                   {fmtMoney(t.amount, t.from)} → {fmtMoney(t.payout, t.to)}
                 </span>
               </span>
-              <span className={`num shrink-0 text-base font-bold ${t.profitUsd < 0 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"}`} dir="ltr">
-                {fmtUsd(t.profitUsd)}
-              </span>
+              {money && (
+                <span className={`num shrink-0 text-base font-bold ${t.profitUsd < 0 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"}`} dir="ltr">
+                  {fmtUsd(t.profitUsd)}
+                </span>
+              )}
             </span>
-            <span className="num mt-2 flex justify-between border-t border-border/60 pt-2 text-[11px] text-subtle" dir="ltr">
+            <span className="num mt-2 flex justify-between gap-2 border-t border-border/60 pt-2 text-[11px] text-subtle" dir="ltr">
               <span>{t.date}</span>
+              <span dir="rtl">{t.createdByName ?? ""}</span>
               <span>{t.ref}</span>
             </span>
           </button>
@@ -127,8 +139,9 @@ export function TxTable({ txs, onOpen, hideCustomer }: { txs: Transaction[]; onO
             <th className="px-4 py-3 font-semibold">المسار</th>
             <th className="px-4 py-3 font-semibold">المبلغ</th>
             <th className="px-4 py-3 font-semibold">المستلم يستلم</th>
-            <th className="px-4 py-3 font-semibold">الربح</th>
+            {money && <th className="px-4 py-3 font-semibold">الربح</th>}
             <th className="px-4 py-3 font-semibold">الحالة</th>
+            <th className="px-4 py-3 font-semibold">بواسطة</th>
           </tr>
         </thead>
         <tbody>
@@ -140,8 +153,9 @@ export function TxTable({ txs, onOpen, hideCustomer }: { txs: Transaction[]; onO
               <td className="px-4 py-3"><RouteTag from={t.from} to={t.to} /></td>
               <td className="num px-4 py-3 font-semibold text-ink" dir="ltr">{fmtMoney(t.amount, t.from)} <span className="text-[10px] text-subtle">{t.from}</span></td>
               <td className="num px-4 py-3 text-ink" dir="ltr">{fmtMoney(t.payout, t.to)} <span className="text-[10px] text-subtle">{t.to}</span></td>
-              <td className={`num px-4 py-3 font-semibold ${t.profitUsd < 0 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"}`} dir="ltr">{fmtUsd(t.profitUsd)}</td>
+              {money && <td className={`num px-4 py-3 font-semibold ${t.profitUsd < 0 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"}`} dir="ltr">{fmtUsd(t.profitUsd)}</td>}
               <td className="px-4 py-3"><StatusChip status={t.status} /></td>
+              <td className="max-w-[120px] truncate px-4 py-3 text-xs text-muted">{t.createdByName ?? "—"}</td>
             </tr>
           ))}
         </tbody>
@@ -195,14 +209,18 @@ export default function TransactionsTab({ data }: { data: AdminData }) {
         <button onClick={() => setShowFilters((v) => !v)} className={`btn-ghost px-4 py-2.5 text-xs ${activeFilters ? "border-primary text-primary" : ""}`}>
           <SlidersHorizontal size={14} /> فلترة{activeFilters ? ` (${activeFilters})` : ""}
         </button>
-        <button onClick={() => exportTransactions(filtered)} disabled={!filtered.length} className="btn-ghost px-4 py-2.5 text-xs disabled:opacity-40">
-          <Download size={14} /> تصدير CSV
-        </button>
-        <span className="hidden sm:block">
-          <button onClick={() => data.openTxForm()} className="btn-primary px-4 py-2.5 text-xs">
-            <Plus size={14} /> معاملة جديدة
+        {data.can("finance") && (
+          <button onClick={() => exportTransactions(filtered)} disabled={!filtered.length} className="btn-ghost px-4 py-2.5 text-xs disabled:opacity-40">
+            <Download size={14} /> تصدير CSV
           </button>
-        </span>
+        )}
+        {data.can("tx_add") && (
+          <span className="hidden sm:block">
+            <button onClick={() => data.openTxForm()} className="btn-primary px-4 py-2.5 text-xs">
+              <Plus size={14} /> معاملة جديدة
+            </button>
+          </span>
+        )}
       </div>
 
       {showFilters && (
@@ -243,8 +261,8 @@ export default function TransactionsTab({ data }: { data: AdminData }) {
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-muted">
         <span><b className="num text-ink">{filtered.length}</b> معاملة</span>
         <span>الحجم: <b className="num text-ink" dir="ltr">{fmtUsd(sum.volume)}</b></span>
-        <span>الإيراد: <b className="num text-ink" dir="ltr">{fmtUsd(sum.revenue)}</b></span>
-        <span>الربح: <b className="num text-ink" dir="ltr">{fmtUsd(sum.profit)}</b></span>
+        {data.can("finance") && <span>الإيراد: <b className="num text-ink" dir="ltr">{fmtUsd(sum.revenue)}</b></span>}
+        {data.can("finance") && <span>الربح: <b className="num text-ink" dir="ltr">{fmtUsd(sum.profit)}</b></span>}
         <span className="text-subtle">(الأرقام للمعاملات المكتملة فقط)</span>
         {(activeFilters > 0 || q) && (
           <button onClick={clear} className="inline-flex items-center gap-1 font-semibold text-primary">
@@ -257,12 +275,12 @@ export default function TransactionsTab({ data }: { data: AdminData }) {
         <Empty
           title="لسه ما في معاملات"
           hint="سجّل أول معاملة: اختار العميل، ثم المسار والمبلغ — والنظام يحسب المستلم والإيراد والربح تلقائياً."
-          action={<button onClick={() => data.openTxForm()} className="btn-primary px-5 py-3 text-sm"><Plus size={15} /> معاملة جديدة</button>}
+          action={data.can("tx_add") ? <button onClick={() => data.openTxForm()} className="btn-primary px-5 py-3 text-sm"><Plus size={15} /> معاملة جديدة</button> : undefined}
         />
       ) : filtered.length === 0 ? (
         <Empty title="لا توجد معاملات مطابقة" hint="جرّب تغيّر البحث أو تمسح الفلاتر." />
       ) : (
-        <TxTable txs={filtered.slice(0, 500)} onOpen={(t) => setOpenId(t.id)} />
+        <TxTable txs={filtered.slice(0, 500)} money={data.can("finance")} onOpen={(t) => setOpenId(t.id)} />
       )}
       {filtered.length > 500 && <p className="text-center text-xs text-subtle">يُعرض أول 500 معاملة — التصدير يشمل الكل ({filtered.length}).</p>}
 

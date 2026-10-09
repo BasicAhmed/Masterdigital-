@@ -52,6 +52,8 @@ export default function TransactionForm({
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
+  // Staff without the finance permission don't see cost, revenue or profit.
+  const money = data.can("finance");
   const customer = customers.find((c) => c.id === customerId) ?? null;
   const pair = findPair(from, to)!;
   const route = routeOf(from, to);
@@ -287,9 +289,11 @@ export default function TransactionForm({
             <Field label={`سعر العميل (لكل ${fmt(pair.unit)} ${pair.base})`} hint={route ? `سعر المسار الحالي: ${fmtRate(route.rate)}` : undefined}>
               <NumInput value={rate} onChange={setRate} suffix={pair.quote} />
             </Field>
-            <Field label="سعر التكلفة" hint={route ? `تكلفة المسار الحالية: ${fmtRate(route.cost)}` : undefined}>
-              <NumInput value={cost} onChange={setCost} suffix={pair.quote} />
-            </Field>
+            {money && (
+              <Field label="سعر التكلفة" hint={route ? `تكلفة المسار الحالية: ${fmtRate(route.cost)}` : undefined}>
+                <NumInput value={cost} onChange={setCost} suffix={pair.quote} />
+              </Field>
+            )}
           </div>
 
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -314,7 +318,7 @@ export default function TransactionForm({
 
         {/* Live calculation */}
         <section className="overflow-hidden rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/10 via-transparent to-accent/10">
-          <div className="grid grid-cols-2 gap-px bg-border/50 sm:grid-cols-4">
+          <div className={`grid grid-cols-2 gap-px bg-border/50 ${money ? "sm:grid-cols-4" : ""}`}>
             {(
               [
                 ["العميل يدفع", `${fmtMoney(calc.customerPays, from)} ${from}`],
@@ -322,7 +326,7 @@ export default function TransactionForm({
                 ["الإيراد", fmtUsd(calc.revenueUsd)],
                 ["صافي الربح", fmtUsd(calc.profitUsd)],
               ] as const
-            ).map(([label, value], i) => (
+            ).slice(0, money ? 4 : 2).map(([label, value], i) => (
               <div key={label} className="bg-surface p-3.5">
                 <p className="text-[11px] text-muted">{label}</p>
                 <p className={`num mt-1 text-base font-bold sm:text-lg ${i === 3 ? (calc.profitUsd < 0 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400") : "text-ink"}`} dir="ltr">
@@ -332,21 +336,27 @@ export default function TransactionForm({
             ))}
           </div>
           <p className="flex flex-wrap gap-x-5 gap-y-1 px-3.5 py-2.5 text-[11px] text-muted">
-            <span>
-              هامش المسار: <b className="num text-ink" dir="ltr">{fmtPct(calc.marginPercent)}</b>
-            </span>
-            <span>
-              ربح فرق السعر: <b className="num text-ink" dir="ltr">{fmtMoney(calc.spread, to)} {to}</b>
-            </span>
+            {money && (
+              <span>
+                هامش المسار: <b className="num text-ink" dir="ltr">{fmtPct(calc.marginPercent)}</b>
+              </span>
+            )}
+            {money && (
+              <span>
+                ربح فرق السعر: <b className="num text-ink" dir="ltr">{fmtMoney(calc.spread, to)} {to}</b>
+              </span>
+            )}
             <span>
               حجم المعاملة: <b className="num text-ink" dir="ltr">{fmtUsd(calc.volumeUsd)}</b>
             </span>
             <span>
               المتاح من {to}: <b className="num text-ink" dir="ltr">{fmtMoney(available, to)}</b>
             </span>
-            <span>
-              هامش الربح من الحجم: <b className="num text-ink" dir="ltr">{fmtPct(calc.profitMarginPercent)}</b>
-            </span>
+            {money && (
+              <span>
+                هامش الربح من الحجم: <b className="num text-ink" dir="ltr">{fmtPct(calc.profitMarginPercent)}</b>
+              </span>
+            )}
           </p>
           {num(amount) > 0 && status === "completed" && calc.payout > available + 1e-9 && (
             <p className="border-t border-amber-500/20 bg-amber-500/10 px-3.5 py-2 text-[11px] font-semibold text-amber-700 dark:text-amber-400">

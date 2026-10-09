@@ -15,6 +15,8 @@ import {
 } from "@/lib/rates";
 import type { UsdtPrices } from "@/lib/fx";
 import UsdtPricesPanel from "./UsdtPricesPanel";
+import { logActivity } from "@/lib/activity";
+import { formatSmart as fs } from "@/lib/format";
 import { formatSmart } from "@/lib/format";
 import { formatRelativeTime } from "@/lib/relativeTime";
 import { flowKey, setDisabledFlows, setMarginPercent } from "@/lib/settings";
@@ -120,6 +122,7 @@ export default function RatesTab({ state, onError }: { state: RatesState; onErro
     onError(null);
     try {
       await setDisabledFlows(next);
+      logActivity({ kind: "rates", action: "update", refId: key, summary: `${next.includes(key) ? "إيقاف" : "تشغيل"} المسار ${from} → ${to}` });
     } catch (err) {
       setDisabled(prev);
       onError(err instanceof Error ? err.message : String(err));
@@ -142,6 +145,7 @@ export default function RatesTab({ state, onError }: { state: RatesState; onErro
         const override = raw.trim() === "" ? null : parseFloat(raw);
         if (override !== null && Number.isNaN(override)) continue;
         await setRouteMargin(x, y, override);
+        logActivity({ kind: "rates", action: "update", refId: key, summary: `هامش ${x} → ${y}: ${override === null ? `الهامش العام (${margin}%)` : `${override}%`}` });
         const effective = override ?? margin;
         setRates((prev) =>
           prev.map((r) =>
@@ -174,6 +178,7 @@ export default function RatesTab({ state, onError }: { state: RatesState; onErro
     try {
       const val = parseFloat(marginInput);
       await setMarginPercent(val);
+      logActivity({ kind: "rates", action: "update", summary: `الهامش العام: ${val}%` });
       setMargin(val);
       setRates((prev) =>
         prev.map((r) =>
@@ -191,6 +196,7 @@ export default function RatesTab({ state, onError }: { state: RatesState; onErro
     setFxMessage(null);
     try {
       const { updated, prices: next, problems } = await updateRatesFromLiveFx();
+      logActivity({ kind: "rates", action: "update", summary: `تحديث الأسعار من Binance (${updated.length} زوج)` });
       applyPairs(updated);
       setPrices(next);
       setFxMessage(`✅ تم تحديث ${updated.length} زوج${problems.length ? ` — ملاحظات: ${problems.join(" · ")}` : ""}`);
@@ -205,6 +211,7 @@ export default function RatesTab({ state, onError }: { state: RatesState; onErro
     onError(null);
     try {
       const { updated, prices: next } = await setUsdtPriceManual(code, buy, sell);
+      logActivity({ kind: "rates", action: "update", refId: code, summary: `سعر ${code} يدوي: شراء ${fs(buy)} · بيع ${fs(sell)}` });
       applyPairs(updated);
       setPrices(next);
       setSavingPrice(null);
@@ -221,6 +228,7 @@ export default function RatesTab({ state, onError }: { state: RatesState; onErro
     onError(null);
     try {
       const { updated, prices: next } = await resetUsdtPrice(code);
+      logActivity({ kind: "rates", action: "update", refId: code, summary: `سعر ${code}: رجوع للسعر التلقائي` });
       applyPairs(updated);
       setPrices(next);
     } catch (err) {
