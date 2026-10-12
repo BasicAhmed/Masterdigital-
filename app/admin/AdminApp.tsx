@@ -42,6 +42,11 @@ import {
   balances as computeBalances,
   costBasis,
   costTable,
+  DEFAULT_ACCOUNTS,
+  getAccounts,
+  saveAccounts as persistAccounts,
+  setAccountRegistry,
+  type AccountMap,
   type CurrencyCost,
   type ExchangeLine,
   deleteMovement,
@@ -128,6 +133,9 @@ export interface AdminData {
   costUsd: Record<string, number>;
   /** Gain / loss from selling currency back (withdrawals with a rate). */
   exchange: ExchangeLine[];
+  /** Liquidity accounts per currency (editable on the liquidity page). */
+  accounts: AccountMap;
+  saveAccounts: (map: AccountMap, summary: string) => Promise<void>;
   alerts: RateAlert[];
   feedback: Feedback[];
   me: Me;
@@ -198,6 +206,7 @@ export default function AdminApp({ me, onSignOut }: { me: Me; onSignOut?: () => 
   const [txs, setTxs] = useState<Transaction[]>([]);
   const [obligations, setObligations] = useState<Obligation[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
+  const [accounts, setAccounts] = useState<AccountMap>(DEFAULT_ACCOUNTS);
   const [alerts, setAlerts] = useState<RateAlert[]>([]);
   const [feedback, setFeedback] = useState<Feedback[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -218,10 +227,13 @@ export default function AdminApp({ me, onSignOut }: { me: Me; onSignOut?: () => 
       safe(getTransactions(), [] as Transaction[]),
       safe(getObligations(), [] as Obligation[]),
       safe(getMovements(), [] as Movement[]),
+      safe(getAccounts(), DEFAULT_ACCOUNTS),
       // only load what this person may read — no false "permission" errors
       canDo(me, "inbox") ? safe(getAlerts(), [] as RateAlert[]) : Promise.resolve([] as RateAlert[]),
       canDo(me, "inbox") ? safe(getFeedback(), [] as Feedback[]) : Promise.resolve([] as Feedback[]),
-    ]).then(([r, flows, c, t, o, m, a, f]) => {
+    ]).then(([r, flows, c, t, o, m, acc, a, f]) => {
+      setAccountRegistry(acc);
+      setAccounts(acc);
       setRates(r.rates);
       setMargin(r.defaultMargin);
       setDisabled(flows);
@@ -265,8 +277,9 @@ export default function AdminApp({ me, onSignOut }: { me: Me; onSignOut?: () => 
     }
   }, []);
 
-  const liquidity = useMemo(() => liquidityLedger(txs, obligations, movements), [txs, obligations, movements]);
-  const balances = useMemo(() => computeBalances(liquidity, usd), [liquidity, usd]);
+  // `accounts` is a dependency: the ledger and balances read the account list
+  const liquidity = useMemo(() => liquidityLedger(txs, obligations, movements), [txs, obligations, movements, accounts]); // eslint-disable-line react-hooks/exhaustive-deps
+  const balances = useMemo(() => computeBalances(liquidity, usd), [liquidity, usd, accounts]); // eslint-disable-line react-hooks/exhaustive-deps
   const { costs, exchange } = useMemo(() => costBasis(movements), [movements]);
   const costUsd = useMemo(() => costTable(costs, usd), [costs, usd]);
 
@@ -283,6 +296,14 @@ export default function AdminApp({ me, onSignOut }: { me: Me; onSignOut?: () => 
       costs,
       costUsd,
       exchange,
+      accounts,
+      saveAccounts: (map, summary) =>
+        guard(async () => {
+          await persistAccounts(map);
+          setAccountRegistry(map);
+          setAccounts(map);
+          logActivity({ kind: "movement", action: "update", summary });
+        }),
       alerts,
       feedback,
       me,
@@ -422,7 +443,7 @@ export default function AdminApp({ me, onSignOut }: { me: Me; onSignOut?: () => 
           setFeedback((prev) => prev.filter((x) => x.id !== id));
         }),
     }),
-    [routes, usd, customers, txs, obligations, movements, liquidity, balances, costs, costUsd, exchange, alerts, feedback, guard, me, can, staff, activity, reloadActivity]
+    [routes, usd, customers, txs, obligations, movements, liquidity, balances, costs, costUsd, exchange, accounts, alerts, feedback, guard, me, can, staff, activity, reloadActivity]
   );
 
   const badge: Partial<Record<Tab, number>> = {

@@ -1,7 +1,7 @@
 import type { CurrencyCode } from "./currencies";
 import { CURRENCY_LIST } from "./currencies";
 import type { Transaction } from "./data";
-import { listDocs, removeDoc, saveDoc, newId } from "./store";
+import { listDocs, readDoc, removeDoc, saveDoc, newId } from "./store";
 import { toUsd } from "./calc";
 import type { Stamped } from "./activity";
 
@@ -132,28 +132,36 @@ export function partyBalances(list: Obligation[], usd: Record<string, number>): 
 
 // ---------- Liquidity: cash on hand per currency ----------
 
-/** The places cash can sit inside one currency (الأصناف). A currency with no
- *  list here (USDT, USD cash, USD South Sudan) has a single balance. Ids are
- *  saved on records, so never rename or reuse an id — change the label. */
+/** The places cash can sit inside one currency (الأصناف). The owner edits
+ *  the list from the liquidity page; it's saved at settings/accounts. Ids
+ *  are stored on records, so an account is renamed or hidden — never
+ *  re-used. A currency with no accounts has a single balance. */
 export interface AccountDef {
   id: string;
   label: string;
+  /** Hidden from pickers (kept so old records still show their name). */
+  hidden?: boolean;
 }
 
-export const ACCOUNTS: Partial<Record<CurrencyCode, AccountDef[]>> = {
-  UGX: [
-    { id: "ugx-momo", label: "موبايل موني" },
-    { id: "ugx-cash", label: "كاش في المكتب" },
-    { id: "ugx-bank", label: "حساب البنك" },
-  ],
+export type AccountMap = Partial<Record<CurrencyCode, AccountDef[]>>;
+
+export const DEFAULT_ACCOUNTS: AccountMap = {
   SDG: [
     { id: "sdg-bankak-1", label: "بنكك 1" },
     { id: "sdg-bankak-2", label: "بنكك 2" },
     { id: "sdg-bankak-3", label: "بنكك 3" },
+    { id: "sdg-bankak-4", label: "بنكك 4" },
   ],
   EGP: [
     { id: "egp-vodafone", label: "فودافون كاش" },
     { id: "egp-instapay", label: "انستا باي" },
+  ],
+  UGX: [
+    { id: "ugx-cash", label: "كاش في المكتب" },
+    { id: "ugx-momo", label: "موبايل موني وكيل" },
+    { id: "ugx-momo-personal", label: "موبايل موني شخصي" },
+    { id: "ugx-airtel", label: "ايرتيل موني وكيل" },
+    { id: "ugx-bank", label: "حساب بنك" },
   ],
   RWF: [{ id: "rwf-momo", label: "موبايل موني (Momo)" }],
   KES: [{ id: "kes-mpesa", label: "امبسا (M-Pesa)" }],
@@ -161,20 +169,38 @@ export const ACCOUNTS: Partial<Record<CurrencyCode, AccountDef[]>> = {
   AED: [{ id: "aed-account", label: "درهم حساب" }],
 };
 
+let registry: AccountMap = DEFAULT_ACCOUNTS;
+
+/** Called by the admin app once the saved list is loaded or changed. */
+export function setAccountRegistry(map: AccountMap) {
+  registry = map;
+}
+
+export async function getAccounts(): Promise<AccountMap> {
+  const saved = await readDoc<{ accounts?: AccountMap }>("settings", "accounts").catch(() => null);
+  return saved?.accounts ?? DEFAULT_ACCOUNTS;
+}
+
+export const saveAccounts = (accounts: AccountMap) => saveDoc("settings", { id: "accounts", accounts, updatedAt: new Date().toISOString() });
+
 /** Records saved before categories existed, or saved without one. */
 export const UNASSIGNED = "";
 export const UNASSIGNED_LABEL = "غير مصنّف";
 
-export const accountsOf = (currency: CurrencyCode): AccountDef[] => ACCOUNTS[currency] ?? [];
+/** Every account of a currency, hidden ones too (for balances and old records). */
+export const allAccountsOf = (currency: CurrencyCode): AccountDef[] => registry[currency] ?? [];
+
+/** Accounts staff can pick. */
+export const accountsOf = (currency: CurrencyCode): AccountDef[] => allAccountsOf(currency).filter((a) => !a.hidden);
 
 export function accountLabel(currency: CurrencyCode, id: string | undefined): string {
   if (!id) return UNASSIGNED_LABEL;
-  return accountsOf(currency).find((a) => a.id === id)?.label ?? UNASSIGNED_LABEL;
+  return allAccountsOf(currency).find((a) => a.id === id)?.label ?? UNASSIGNED_LABEL;
 }
 
 /** Keeps an id only if it belongs to this currency (else unassigned). */
 export const validAccount = (currency: CurrencyCode, id: string | undefined): string =>
-  accountsOf(currency).some((a) => a.id === id) ? (id as string) : UNASSIGNED;
+  allAccountsOf(currency).some((a) => a.id === id) ? (id as string) : UNASSIGNED;
 
 export type MovementKind = "deposit" | "withdraw";
 
@@ -308,12 +334,16 @@ export function balances(lines: LiquidityLine[], usd: Record<string, number>): B
   return CURRENCY_LIST.map((c) => {
     const mine = lines.filter((l) => l.currency === c.code);
     const balance = mine.reduce((s, l) => s + l.delta, 0);
-    const defs = accountsOf(c.code);
-    const accounts: AccountBalance[] = defs.map((d) => ({
-      id: d.id,
-      label: d.label,
-      balance: mine.filter((l) => l.account === d.id).reduce((s, l) => s + l.delta, 0),
-    }));
+    const defs = allAccountsOf(c.code);
+    const accounts: AccountBalance[] = defs
+      .map((d) => ({
+        id: d.id,
+        label: d.label,
+        hidden: !!d.hidden,
+        balance: mine.filter((l) => l.account === d.id).reduce((s, l) => s + l.delta, 0),
+      }))
+      .filter((a) => !a.hidden || Math.abs(a.balance) > 1e-9)
+      .map(({ hidden: _h, ...a }) => a);
     if (defs.length) {
       const loose = mine.filter((l) => !l.account).reduce((s, l) => s + l.delta, 0);
       if (Math.abs(loose) > 1e-9) accounts.push({ id: UNASSIGNED, label: UNASSIGNED_LABEL, balance: loose });

@@ -1,11 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowDownToLine, ArrowUpFromLine, Check, Download, Trash2, TriangleAlert, Wallet } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, Check, Download, Eye, EyeOff, Plus, Settings2, Trash2, TriangleAlert, Wallet } from "lucide-react";
 import { CURRENCIES, CURRENCY_LIST, type CurrencyCode } from "@/lib/currencies";
 import { fmtMoney, fmtUsd, formatSmart, todayStr } from "@/lib/format";
 import { downloadCsv } from "@/lib/data";
-import { accountLabel, accountsOf, validAccount, type MovementKind } from "@/lib/books";
+import { accountLabel, accountsOf, allAccountsOf, validAccount, type AccountDef, type AccountMap, type MovementKind } from "@/lib/books";
 import { newId } from "@/lib/store";
 import type { AdminData } from "./AdminApp";
 import { Field, Modal, NumInput, Panel } from "./ui";
@@ -131,11 +131,116 @@ function MovementForm({ kind, currency, data, onClose }: { kind: MovementKind; c
   );
 }
 
+/** Add, rename or hide the accounts of each currency. An account that has
+ *  records can only be hidden (its name stays on old records); an unused
+ *  one can be deleted. */
+function AccountsManager({ data, onClose }: { data: AdminData; onClose: () => void }) {
+  const [map, setMap] = useState<AccountMap>(() => JSON.parse(JSON.stringify(data.accounts)));
+  const [cur, setCur] = useState<CurrencyCode>("SDG");
+  const [newLabel, setNewLabel] = useState("");
+  const [saving, setSaving] = useState(false);
+  const list: AccountDef[] = map[cur] ?? [];
+  const used = useMemo(() => new Set(data.liquidity.map((l) => `${l.currency}:${l.account}`)), [data.liquidity]);
+  const setList = (next: AccountDef[]) => setMap({ ...map, [cur]: next });
+  const dirty = JSON.stringify(map) !== JSON.stringify(data.accounts);
+
+  function add() {
+    const label = newLabel.trim();
+    if (!label) return;
+    setList([...list, { id: `${cur.toLowerCase()}-${newId()}`, label }]);
+    setNewLabel("");
+  }
+
+  return (
+    <Modal title="حسابات السيولة" onClose={onClose}>
+      <div className="space-y-4">
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="العملة">
+          {CURRENCY_LIST.filter((c) => c.code !== "USDT").map((c) => (
+            <button
+              key={c.code}
+              onClick={() => setCur(c.code)}
+              aria-pressed={cur === c.code}
+              className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${cur === c.code ? "border-brand-navy bg-brand-navy text-white" : "border-border bg-surface text-muted hover:text-ink"}`}
+            >
+              {c.flag} {c.code}
+              {(map[c.code]?.filter((a) => !a.hidden).length ?? 0) > 0 && <span className="num mr-1 opacity-70">{map[c.code]!.filter((a) => !a.hidden).length}</span>}
+            </button>
+          ))}
+        </div>
+
+        {list.length === 0 ? (
+          <p className="rounded-xl bg-surface2 p-3 text-xs text-muted">ما في حسابات لـ {cur} — الرصيد بيظهر كرقم واحد. أضف حساب لو عايز تقسّمه.</p>
+        ) : (
+          <ul className="space-y-2">
+            {list.map((a, i) => {
+              const inUse = used.has(`${cur}:${a.id}`);
+              return (
+                <li key={a.id} className={`flex items-center gap-2 ${a.hidden ? "opacity-50" : ""}`}>
+                  <input
+                    value={a.label}
+                    onChange={(e) => setList(list.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))}
+                    aria-label="اسم الحساب"
+                    className="field flex-1 px-3 py-2.5 text-sm"
+                  />
+                  <button
+                    onClick={() => setList(list.map((x, j) => (j === i ? { ...x, hidden: !x.hidden } : x)))}
+                    aria-label={a.hidden ? "إظهار" : "إخفاء"}
+                    title={a.hidden ? "إظهار" : "إخفاء"}
+                    className="rounded-lg border border-border p-2 text-muted hover:text-ink"
+                  >
+                    {a.hidden ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                  {!inUse && (
+                    <button onClick={() => setList(list.filter((_, j) => j !== i))} aria-label="حذف" title="حذف" className="rounded-lg border border-border p-2 text-subtle hover:text-red-500">
+                      <Trash2 size={15} />
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <p className="text-[11px] leading-relaxed text-subtle">الحساب اللي عليه حركات ما بيتمسح — اخفيه بس، واسمه بيفضل في السجلات القديمة.</p>
+
+        <div className="flex gap-2">
+          <input
+            value={newLabel}
+            onChange={(e) => setNewLabel(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && add()}
+            placeholder={`حساب ${cur} جديد…`}
+            className="field flex-1 px-3 py-2.5 text-sm"
+          />
+          <button onClick={add} disabled={!newLabel.trim()} className="btn-ghost px-4 py-2.5 text-xs disabled:opacity-40">
+            <Plus size={14} /> إضافة
+          </button>
+        </div>
+
+        <button
+          disabled={!dirty || saving || (Object.values(map) as (AccountDef[] | undefined)[]).some((l) => l?.some((a) => !a.label.trim()))}
+          onClick={async () => {
+            setSaving(true);
+            try {
+              await data.saveAccounts(map, "تعديل حسابات السيولة");
+              onClose();
+            } catch {
+              setSaving(false);
+            }
+          }}
+          className="btn-primary w-full py-3.5 text-sm"
+        >
+          <Check size={16} /> {saving ? "جارٍ الحفظ…" : "حفظ"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 export default function LiquidityTab({ data }: { data: AdminData }) {
   const { balances, liquidity } = data;
   const [form, setForm] = useState<{ kind: MovementKind; currency: CurrencyCode } | null>(null);
   const [filter, setFilter] = useState<CurrencyCode | "ALL">("ALL");
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [managing, setManaging] = useState(false);
 
   const totalUsd = balances.reduce((s, b) => s + b.usd, 0);
   const negative = balances.filter((b) => b.balance < -1e-9);
@@ -151,7 +256,7 @@ export default function LiquidityTab({ data }: { data: AdminData }) {
       ...balances.flatMap((b) => b.accounts.map((a) => [b.currency, a.label, Math.round(a.balance * 100) / 100])),
       [],
       ["التاريخ", "العملة", "الصنف", "الحركة", "المصدر", "البيان", "بواسطة", "السعر"],
-      ...lines.map((l) => [l.date, l.currency, accountsOf(l.currency).length ? accountLabel(l.currency, l.account) : "", Math.round(l.delta * 100) / 100, SOURCE_LABEL[l.source], l.label, l.by ?? "", l.rate ?? ""]),
+      ...lines.map((l) => [l.date, l.currency, allAccountsOf(l.currency).length ? accountLabel(l.currency, l.account) : "", Math.round(l.delta * 100) / 100, SOURCE_LABEL[l.source], l.label, l.by ?? "", l.rate ?? ""]),
     ]);
   }
 
@@ -168,13 +273,18 @@ export default function LiquidityTab({ data }: { data: AdminData }) {
             </p>
             <p className="mt-1 text-xs text-white/70">مجموع أرصدة كل العملات محوّل للدولار بسعر السوق الحالي</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button onClick={() => setForm({ kind: "deposit", currency: "USDT" })} className="btn-gold px-4 py-2.5 text-xs">
               <ArrowDownToLine size={14} /> إيداع
             </button>
             <button onClick={() => setForm({ kind: "withdraw", currency: "USDT" })} className="inline-flex items-center gap-2 rounded-xl border border-white/30 px-4 py-2.5 text-xs font-bold text-white hover:border-white/70">
               <ArrowUpFromLine size={14} /> سحب
             </button>
+            {data.can("liquidity") && (
+              <button onClick={() => setManaging(true)} aria-label="حسابات السيولة" title="حسابات السيولة" className="inline-flex items-center gap-2 rounded-xl border border-white/30 px-3 py-2.5 text-xs font-bold text-white hover:border-white/70">
+                <Settings2 size={14} /> الحسابات
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -283,7 +393,7 @@ export default function LiquidityTab({ data }: { data: AdminData }) {
                 <div className="min-w-0">
                   <p className="flex items-center gap-2">
                     <span className={`chip ${SOURCE_TONE[l.source]}`}>{SOURCE_LABEL[l.source]}</span>
-                    {accountsOf(l.currency).length > 0 && <span className="chip bg-surface2 text-muted">{accountLabel(l.currency, l.account)}</span>}
+                    {allAccountsOf(l.currency).length > 0 && <span className="chip bg-surface2 text-muted">{accountLabel(l.currency, l.account)}</span>}
                     <span className="truncate text-sm text-ink">{l.label}</span>
                   </p>
                   <p className="mt-0.5 text-[11px] text-subtle">
@@ -329,6 +439,7 @@ export default function LiquidityTab({ data }: { data: AdminData }) {
         {lines.length > 120 && <p className="mt-3 text-center text-xs text-subtle">يُعرض آخر 120 حركة — التصدير يشمل الكل.</p>}
       </Panel>
 
+      {managing && <AccountsManager data={data} onClose={() => setManaging(false)} />}
       {form && <MovementForm kind={form.kind} currency={form.currency} data={data} onClose={() => setForm(null)} />}
     </div>
   );
