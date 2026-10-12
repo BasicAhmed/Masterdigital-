@@ -1,4 +1,5 @@
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { fetchDoc } from "./store";
 import { db, firebaseEnabled } from "./firebase";
 
 const DEFAULT_MARGIN_PERCENT = 2.5;
@@ -9,7 +10,7 @@ const DEFAULT_DAILY_TARGET = 2000;
 export async function getMarginPercent(): Promise<number> {
   if (!firebaseEnabled || !db) return DEFAULT_MARGIN_PERCENT;
   try {
-    const snap = await getDoc(doc(db, "settings", "margin"));
+    const snap = await fetchDoc(doc(db, "settings", "margin"));
     if (!snap.exists()) return DEFAULT_MARGIN_PERCENT;
     const v = snap.data().percent;
     return typeof v === "number" ? v : DEFAULT_MARGIN_PERCENT;
@@ -27,7 +28,7 @@ export async function setMarginPercent(percent: number) {
 export async function getDailyTarget(): Promise<number> {
   if (!firebaseEnabled || !db) return DEFAULT_DAILY_TARGET;
   try {
-    const snap = await getDoc(doc(db, "settings", "dailyTarget"));
+    const snap = await fetchDoc(doc(db, "settings", "dailyTarget"));
     if (!snap.exists()) return DEFAULT_DAILY_TARGET;
     const v = snap.data().amount;
     return typeof v === "number" ? v : DEFAULT_DAILY_TARGET;
@@ -103,7 +104,7 @@ export function flowKey(from: string, to: string) {
 export async function getDisabledFlows(): Promise<string[]> {
   if (!firebaseEnabled || !db) return [];
   try {
-    const snap = await getDoc(doc(db, "settings", "flows"));
+    const snap = await fetchDoc(doc(db, "settings", "flows"));
     if (!snap.exists()) return [];
     const list = snap.data().disabled;
     return Array.isArray(list) ? list.filter((x): x is string => typeof x === "string") : [];
@@ -136,7 +137,7 @@ export const DEFAULT_CONTACT: ContactSettings = {
 export async function getContactSettings(): Promise<ContactSettings> {
   if (!firebaseEnabled || !db) return DEFAULT_CONTACT;
   try {
-    const snap = await getDoc(doc(db, "settings", "contact"));
+    const snap = await fetchDoc(doc(db, "settings", "contact"));
     if (!snap.exists()) return DEFAULT_CONTACT;
     const x = snap.data();
     const str = (v: unknown, fallback: string) => (typeof v === "string" ? v : fallback);

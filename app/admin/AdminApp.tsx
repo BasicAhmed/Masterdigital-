@@ -21,7 +21,8 @@ import {
 } from "lucide-react";
 import Brand from "@/components/Brand";
 import ThemeToggle from "@/components/ThemeToggle";
-import { demoMode } from "@/lib/store";
+import { demoMode, fromDeviceCache } from "@/lib/store";
+import dynamic from "next/dynamic";
 import { can as canDo, getStaff, type Me, type Perm, type StaffMember } from "@/lib/staff";
 import { getActivity, logActivity, onActivity, setActor, stamp, type Activity } from "@/lib/activity";
 import { fmtMoney } from "@/lib/format";
@@ -75,17 +76,29 @@ import {
   type Feedback,
   type RateAlert,
 } from "@/lib/alerts";
-import FinanceTab from "./FinanceTab";
-import TransactionsTab from "./TransactionsTab";
-import CustomersTab from "./CustomersTab";
-import LedgerTab from "./LedgerTab";
-import LiquidityTab from "./LiquidityTab";
-import RatesTab from "./RatesTab";
-import ContactTab from "./ContactTab";
-import { AlertsTab, FeedbackTab } from "./InboxTabs";
-import TransactionForm from "./TransactionForm";
-import TeamTab from "./TeamTab";
-import ExpensesTab from "./ExpensesTab";
+import type { RatesState } from "./RatesTab";
+
+// Each section's code downloads only when it's opened — a much smaller first load.
+function PageSpinner() {
+  return (
+    <div className="flex justify-center py-20">
+      <RefreshCw size={20} className="animate-spin text-primary" />
+    </div>
+  );
+}
+const lazy = { loading: PageSpinner, ssr: false } as const;
+const FinanceTab = dynamic(() => import("./FinanceTab"), lazy);
+const TransactionsTab = dynamic(() => import("./TransactionsTab"), lazy);
+const CustomersTab = dynamic(() => import("./CustomersTab"), lazy);
+const LedgerTab = dynamic(() => import("./LedgerTab"), lazy);
+const LiquidityTab = dynamic(() => import("./LiquidityTab"), lazy);
+const RatesTab = dynamic<{ state: RatesState; onError: (msg: string | null) => void }>(() => import("./RatesTab"), lazy);
+const ContactTab = dynamic(() => import("./ContactTab"), lazy);
+const AlertsTab = dynamic(() => import("./InboxTabs").then((m) => m.AlertsTab), lazy);
+const FeedbackTab = dynamic(() => import("./InboxTabs").then((m) => m.FeedbackTab), lazy);
+const TransactionForm = dynamic(() => import("./TransactionForm"), { ssr: false });
+const TeamTab = dynamic(() => import("./TeamTab"), lazy);
+const ExpensesTab = dynamic(() => import("./ExpensesTab"), lazy);
 import { Modal } from "./ui";
 
 export type Tab = "finance" | "transactions" | "customers" | "ledger" | "liquidity" | "rates" | "alerts" | "feedback" | "contact" | "team" | "expenses";
@@ -196,13 +209,12 @@ export default function AdminApp({ me, onSignOut }: { me: Me; onSignOut?: () => 
 
   const reloadActivity = useCallback(async () => {
     if (!seesTeam) return;
-    const [a, s] = await Promise.all([getActivity().catch(() => [] as Activity[]), getStaff().catch(() => [] as StaffMember[])]);
+    const [a, s] = await Promise.all([getActivity(500).catch(() => [] as Activity[]), getStaff().catch(() => [] as StaffMember[])]);
     setActivity(a);
     setStaff(s);
   }, [seesTeam]);
-  useEffect(() => {
-    reloadActivity();
-  }, [reloadActivity]);
+  // The activity log is big, so it loads only when the Team page is opened.
+  // (The owner's small staff list loads right after the main data, below.)
   const [loaded, setLoaded] = useState(false);
   // Rates come from the same source as the public site (market price + per-direction margin).
   const [rates, setRates] = useState<RateRow[]>([]);
@@ -222,24 +234,29 @@ export default function AdminApp({ me, onSignOut }: { me: Me; onSignOut?: () => 
   const [more, setMore] = useState(false);
 
   useEffect(() => {
-    // Each list loads on its own: one failing collection must not blank the others.
-    const safe = <T,>(p: Promise<T>, fallback: T) =>
-      p.catch((e) => {
-        setError(e instanceof Error ? e.message : String(e));
-        return fallback;
-      });
-    Promise.all([
-      safe(getRatesWithMargin(), { rates: [] as RateRow[], defaultMargin: 2.5 }),
-      safe(getDisabledFlows(), [] as string[]),
-      safe(getCustomers(), [] as Customer[]),
-      safe(getTransactions(), [] as Transaction[]),
-      safe(getObligations(), [] as Obligation[]),
-      safe(getMovements(), [] as Movement[]),
-      safe(getAccounts(), DEFAULT_ACCOUNTS),
-      // only load what this person may read — no false "permission" errors
-      canDo(me, "inbox") ? safe(getAlerts(), [] as RateAlert[]) : Promise.resolve([] as RateAlert[]),
-      canDo(me, "inbox") ? safe(getFeedback(), [] as Feedback[]) : Promise.resolve([] as Feedback[]),
-    ]).then(([r, flows, c, t, o, m, acc, a, f]) => {
+    let alive = true;
+    const loadAll = (quiet: boolean) => {
+      // Each list loads on its own: one failing collection must not blank the others.
+      const safe = <T,>(p: Promise<T>, fallback: T) =>
+        p.catch((e) => {
+          if (!quiet) setError(e instanceof Error ? e.message : String(e));
+          return fallback;
+        });
+      return Promise.all([
+        safe(getRatesWithMargin(), { rates: [] as RateRow[], defaultMargin: 2.5 }),
+        safe(getDisabledFlows(), [] as string[]),
+        safe(getCustomers(), [] as Customer[]),
+        safe(getTransactions(), [] as Transaction[]),
+        safe(getObligations(), [] as Obligation[]),
+        safe(getMovements(), [] as Movement[]),
+        safe(getAccounts(), DEFAULT_ACCOUNTS),
+        // only load what this person may read — no false "permission" errors
+        canDo(me, "inbox") ? safe(getAlerts(), [] as RateAlert[]) : Promise.resolve([] as RateAlert[]),
+        canDo(me, "inbox") ? safe(getFeedback(), [] as Feedback[]) : Promise.resolve([] as Feedback[]),
+      ]);
+    };
+    const apply = ([r, flows, c, t, o, m, acc, a, f]: Awaited<ReturnType<typeof loadAll>>) => {
+      if (!alive) return;
       setAccountRegistry(acc);
       setAccounts(acc);
       setRates(r.rates);
@@ -252,8 +269,31 @@ export default function AdminApp({ me, onSignOut }: { me: Me; onSignOut?: () => 
       setAlerts(a);
       setFeedback(f);
       setLoaded(true);
-    });
-  }, []);
+    };
+    const SEEN = `masterdigital:seen:${me.uid}`;
+    let seen = false;
+    try {
+      seen = !demoMode && window.localStorage.getItem(SEEN) === "1";
+    } catch {}
+    (async () => {
+      // 1) instantly, from what this device saved last time
+      if (seen) {
+        const cached = await fromDeviceCache(() => loadAll(true)).catch(() => null);
+        if (cached) apply(cached);
+      }
+      // 2) then fresh from the server, replacing it
+      const fresh = await loadAll(false);
+      apply(fresh);
+      // small, needed for the owner's pending-requests badge
+      if (me.role === "owner") getStaff().then((x) => alive && setStaff(x)).catch(() => undefined);
+      try {
+        window.localStorage.setItem(SEEN, "1");
+      } catch {}
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Whenever rates change (load, live update, margin edit), flag the alerts whose target is now met.
   useEffect(() => {
@@ -465,6 +505,13 @@ export default function AdminApp({ me, onSignOut }: { me: Me; onSignOut?: () => 
   };
   const moreBadge = tabs.filter(([v]) => !PRIMARY.includes(v)).reduce((s, [v]) => s + (badge[v] ?? 0), 0);
   const current = tabs.find(([v]) => v === tab) ?? tabs[0] ?? TABS[1];
+  const [activityAsked, setActivityAsked] = useState(false);
+  useEffect(() => {
+    if (current?.[0] === "team" && !activityAsked) {
+      setActivityAsked(true);
+      reloadActivity();
+    }
+  }, [current, activityAsked, reloadActivity]);
   // never render a section this person may not open
   const shown: Tab | null = tabs.length ? current[0] : null;
 

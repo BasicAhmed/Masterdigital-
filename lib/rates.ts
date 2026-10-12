@@ -1,4 +1,5 @@
 import { collection, getDocs, getDoc, doc, setDoc, deleteField, serverTimestamp } from "firebase/firestore";
+import { fetchDoc, fetchDocs } from "./store";
 import { db, firebaseEnabled } from "./firebase";
 import { PAIRS, pairKey, isForwardDirection, isMultiplyCorridor, type CurrencyCode } from "./corridors";
 import { backToAuto, buildUsdtPrices, midOf, normalizePrices, pairMarketPrices, type MarketData, type UsdtPrices } from "./fx";
@@ -98,7 +99,7 @@ export async function getRatesWithMargin(): Promise<{ rates: RateRow[]; defaultM
   try {
     const [defaultMargin, snap] = await Promise.all([
       getMarginPercent(),
-      getDocs(collection(db, "rates")),
+      fetchDocs(collection(db, "rates")),
     ]);
     if (snap.empty) return { rates: seedRows(defaultMargin), defaultMargin };
 
@@ -196,7 +197,7 @@ export async function setRouteMargin(from: CurrencyCode, to: CurrencyCode, perce
 export async function getUsdtPrices(): Promise<UsdtPrices> {
   if (!firebaseEnabled || !db) return {};
   try {
-    const snap = await getDoc(doc(db, "settings", "usdtPrices"));
+    const snap = await fetchDoc(doc(db, "settings", "usdtPrices"));
     return normalizePrices(snap.exists() ? snap.data().prices : null);
   } catch {
     return {};
