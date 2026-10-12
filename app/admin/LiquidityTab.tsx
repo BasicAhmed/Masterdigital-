@@ -10,11 +10,12 @@ import { newId } from "@/lib/store";
 import type { AdminData } from "./AdminApp";
 import { Field, Modal, NumInput, Panel } from "./ui";
 
-const SOURCE_LABEL = { manual: "يدوي", transaction: "معاملة", obligation: "حسابات" } as const;
+const SOURCE_LABEL = { manual: "يدوي", transaction: "معاملة", obligation: "حسابات", expense: "مصروف" } as const;
 const SOURCE_TONE = {
   manual: "bg-primary/10 text-primary",
   transaction: "bg-surface2 text-muted",
   obligation: "bg-accent/15 text-accent",
+  expense: "bg-red-500/10 text-red-500",
 } as const;
 
 function MovementForm({ kind, currency, data, onClose }: { kind: MovementKind; currency: CurrencyCode; data: AdminData; onClose: () => void }) {
@@ -421,7 +422,7 @@ export default function LiquidityTab({ data }: { data: AdminData }) {
                     {l.delta >= 0 ? "+" : "−"}
                     {fmtMoney(Math.abs(l.delta), l.currency)} <span className="text-[10px] text-subtle">{l.currency}</span>
                   </span>
-                  {l.source === "manual" &&
+                  {(l.source === "manual" || l.source === "expense") &&
                     (confirmId === l.refId ? (
                       <button onClick={() => data.removeMovement(l.refId)} className="rounded-lg bg-red-600 px-2 py-1 text-[11px] font-semibold text-white">
                         تأكيد

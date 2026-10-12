@@ -202,7 +202,12 @@ export function accountLabel(currency: CurrencyCode, id: string | undefined): st
 export const validAccount = (currency: CurrencyCode, id: string | undefined): string =>
   allAccountsOf(currency).some((a) => a.id === id) ? (id as string) : UNASSIGNED;
 
-export type MovementKind = "deposit" | "withdraw";
+/** deposit / withdraw move capital in or out; expense is a running cost of
+ *  the business (rent, salaries…) — it leaves the account it was paid from
+ *  and is subtracted from profit. */
+export type MovementKind = "deposit" | "withdraw" | "expense";
+
+export const EXPENSE_CATEGORIES = ["إيجار", "رواتب", "مواصلات", "اتصالات وإنترنت", "رسوم بنكية", "عمولات وكلاء", "ضيافة", "أخرى"];
 
 /** A manual change to the funds: opening balance, top-up, owner withdrawal,
  *  correction after a count. Everything else moves cash on its own. */
@@ -219,6 +224,8 @@ export interface Movement extends Stamped {
    *  1 USDT (e.g. 8,800 SDG). Deposits with a rate set the average cost;
    *  withdrawals with a rate show the exchange gain or loss. */
   rate?: number;
+  /** Expenses only: what it was for. */
+  category?: string;
   createdAt: string;
 }
 
@@ -230,7 +237,7 @@ export interface LiquidityLine {
   date: string;
   currency: CurrencyCode;
   delta: number;
-  source: "manual" | "transaction" | "obligation";
+  source: "manual" | "transaction" | "obligation" | "expense";
   label: string;
   refId: string;
   /** Category inside the currency ("" = unassigned). */
@@ -254,8 +261,11 @@ export function liquidityLedger(txs: Transaction[], obligations: Obligation[], m
       date: m.date,
       currency: m.currency,
       delta: m.kind === "deposit" ? m.amount : -m.amount,
-      source: "manual",
-      label: m.note || (m.kind === "deposit" ? "إيداع" : "سحب"),
+      source: m.kind === "expense" ? "expense" : "manual",
+      label:
+        m.kind === "expense"
+          ? `${m.category || "مصروف"}${m.note ? ` — ${m.note}` : ""}`
+          : m.note || (m.kind === "deposit" ? "إيداع" : "سحب"),
       refId: m.id,
       account: validAccount(m.currency, m.account),
       by: m.createdByName,
@@ -443,4 +453,46 @@ export function costTable(costs: Partial<Record<CurrencyCode, CurrencyCost>>, ma
   const out: Record<string, number> = { ...market, [BASE]: 1 };
   for (const c of Object.values(costs)) if (c && c.avg > 0) out[c.currency] = c.avg;
   return out;
+}
+
+// ---------- Running costs of the business ----------
+
+export interface ExpenseLine {
+  id: string;
+  date: string;
+  currency: CurrencyCode;
+  amount: number;
+  usd: number; // valued at what that currency cost him
+  category: string;
+  note: string;
+  account: string;
+  by?: string;
+}
+
+/** Every expense, newest first, with its dollar value at his own cost
+ *  (`costUsd` = units per 1 USDT: his liquidity average, else the market). */
+export function expenseLines(movements: Movement[], costUsd: Record<string, number>): ExpenseLine[] {
+  return movements
+    .filter((m) => m.kind === "expense")
+    .map((m) => ({
+      id: m.id,
+      date: m.date,
+      currency: m.currency,
+      amount: m.amount,
+      usd: toUsd(m.amount, m.currency, costUsd),
+      category: m.category || "أخرى",
+      note: m.note,
+      account: validAccount(m.currency, m.account),
+      by: m.createdByName,
+    }))
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/** Net result of a period, the way the owner reads it: expenses come out of
+ *  profit first; whatever profit can't cover came out of capital. */
+export function netResult(dealProfit: number, exchangeGain: number, expenses: number) {
+  const earned = dealProfit + exchangeGain;
+  const net = earned - expenses;
+  const fromProfit = Math.min(expenses, Math.max(0, earned));
+  return { earned, expenses, net, fromProfit, fromCapital: expenses - fromProfit };
 }

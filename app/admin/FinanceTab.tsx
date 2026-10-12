@@ -1,5 +1,6 @@
 "use client";
 
+import { netResult } from "@/lib/books";
 import { useMemo, useState } from "react";
 import { ArrowLeftRight, BadgePercent, Banknote, Download, Plus, TrendingUp, Users, Wallet } from "lucide-react";
 import { CURRENCIES, type CurrencyCode } from "@/lib/currencies";
@@ -85,6 +86,8 @@ export default function FinanceTab({ data }: { data: AdminData }) {
   // selling currency back (withdrawals with a rate) — separate from deal profit
   const fx = data.exchange.filter((e) => e.date >= range.from && e.date <= range.to);
   const fxGain = fx.reduce((sum, e) => sum + e.gainUsd, 0);
+  const expTotal = data.expenses.filter((e) => e.date >= range.from && e.date <= range.to).reduce((sum, e) => sum + e.usd, 0);
+  const net = netResult(T.profit, fxGain, expTotal);
 
   const today = totals(txs.filter((t) => inRange(t, periodRange("today"))));
   const month = totals(txs.filter((t) => inRange(t, periodRange("month"))));
@@ -118,7 +121,9 @@ export default function FinanceTab({ data }: { data: AdminData }) {
       ["هامش الربح %", r2(T.margin)],
       ["متوسط الربح للمعاملة (USD)", r2(T.avgProfit)],
       ["ربح / خسارة الصرف (USD)", r2(fxGain)],
-      ["الصافي بعد الصرف (USD)", r2(T.profit + fxGain)],
+      ["المصروفات (USD)", r2(expTotal)],
+      ["صافي الربح (USD)", r2(net.net)],
+      ["منها من رأس المال (USD)", r2(net.fromCapital)],
       ["قيد التنفيذ", statusCount("pending")],
       ["ملغاة", statusCount("cancelled")],
       [],
@@ -219,27 +224,43 @@ export default function FinanceTab({ data }: { data: AdminData }) {
         <Stat label="إجمالي المعاملات" value={fmt(T.count)} sub={`${statusCount("pending")} قيد التنفيذ · ${statusCount("cancelled")} ملغاة`} icon={<ArrowLeftRight size={15} />} />
         <Stat label="حجم التحويلات" value={fmtUsd(T.volume)} sub={`متوسط المعاملة ${fmtUsd(T.avgTicket)}`} icon={<Banknote size={15} />} />
         <Stat label="الإيرادات" value={fmtUsd(T.revenue)} sub="فرق السعر + الرسوم" icon={<Wallet size={15} />} />
-        <Stat label="صافي الربح" value={fmtUsd(T.profit)} sub={`متوسط ${fmtUsd(T.avgProfit)} للمعاملة`} icon={<TrendingUp size={15} />} tone="good" />
+        <Stat label="ربح المعاملات" value={fmtUsd(T.profit)} sub={`متوسط ${fmtUsd(T.avgProfit)} للمعاملة`} icon={<TrendingUp size={15} />} tone="good" />
         <Stat label="هامش الربح" value={fmtPct(T.margin)} sub="الربح ÷ حجم التحويلات" icon={<BadgePercent size={15} />} tone="gold" />
         <Stat label="العملاء النشطون" value={fmt(cust.length)} sub={`${newCustomers} عميل جديد في الفترة`} icon={<Users size={15} />} />
       </div>
 
-      <div className="card-sm grid gap-3 p-4 text-sm sm:grid-cols-3">
-        <div>
-          <p className="text-[11px] text-muted">ربح المعاملات</p>
-          <p className="num mt-0.5 text-lg font-bold text-ink" dir="ltr">{fmtUsd(T.profit)}</p>
-          <p className="text-[11px] text-subtle">محسوب على تكلفة سيولتك</p>
+      {/* the real bottom line: expenses come out of profit first, then capital */}
+      <div className="card-sm p-4 text-sm">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div>
+            <p className="text-[11px] text-muted">ربح المعاملات</p>
+            <p className="num mt-0.5 text-lg font-bold text-ink" dir="ltr">{fmtUsd(T.profit)}</p>
+          </div>
+          <div>
+            <p className="text-[11px] text-muted">ربح / خسارة الصرف</p>
+            <p className={`num mt-0.5 text-lg font-bold ${fxGain < 0 ? "text-red-500" : "text-ink"}`} dir="ltr">{fmtUsd(fxGain)}</p>
+          </div>
+          <div>
+            <p className="text-[11px] text-muted">المصروفات</p>
+            <p className="num mt-0.5 text-lg font-bold text-red-500" dir="ltr">{expTotal ? `−${fmtUsd(expTotal)}` : fmtUsd(0)}</p>
+          </div>
+          <div>
+            <p className="text-[11px] text-muted">صافي الربح</p>
+            <p className={`num mt-0.5 text-lg font-bold ${net.net < 0 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"}`} dir="ltr">{fmtUsd(net.net)}</p>
+          </div>
         </div>
-        <div>
-          <p className="text-[11px] text-muted">ربح / خسارة الصرف</p>
-          <p className={`num mt-0.5 text-lg font-bold ${fxGain < 0 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"}`} dir="ltr">{fmtUsd(fxGain)}</p>
-          <p className="text-[11px] text-subtle">{fx.length ? `من ${fx.length} عملية بيع عملة` : "سجّل السحب بسعر عشان يظهر هنا"}</p>
-        </div>
-        <div>
-          <p className="text-[11px] text-muted">الصافي</p>
-          <p className={`num mt-0.5 text-lg font-bold ${T.profit + fxGain < 0 ? "text-red-500" : "text-ink"}`} dir="ltr">{fmtUsd(T.profit + fxGain)}</p>
-          <p className="text-[11px] text-subtle">المعاملات + الصرف</p>
-        </div>
+        {expTotal > 0 && (
+          <p className={`mt-3 border-t border-border/60 pt-3 text-xs ${net.fromCapital > 0 ? "font-semibold text-red-500" : "text-muted"}`}>
+            {net.fromCapital > 0 ? (
+              <>
+                المصروفات أكبر من الربح — <span className="num" dir="ltr">{fmtUsd(net.fromProfit)}</span> اتغطت من الربح و{" "}
+                <span className="num" dir="ltr">{fmtUsd(net.fromCapital)}</span> طلعت من رأس المال (السيولة).
+              </>
+            ) : (
+              <>المصروفات اتغطت بالكامل من الربح.</>
+            )}
+          </p>
+        )}
       </div>
 
       {statusCount("pending") > 0 && (

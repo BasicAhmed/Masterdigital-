@@ -12,6 +12,7 @@ import {
   MessageSquareText,
   Phone,
   Plus,
+  Receipt,
   RefreshCw,
   TrendingUp,
   UserCog,
@@ -42,6 +43,8 @@ import {
   balances as computeBalances,
   costBasis,
   costTable,
+  expenseLines,
+  type ExpenseLine,
   DEFAULT_ACCOUNTS,
   getAccounts,
   saveAccounts as persistAccounts,
@@ -82,9 +85,10 @@ import ContactTab from "./ContactTab";
 import { AlertsTab, FeedbackTab } from "./InboxTabs";
 import TransactionForm from "./TransactionForm";
 import TeamTab from "./TeamTab";
+import ExpensesTab from "./ExpensesTab";
 import { Modal } from "./ui";
 
-export type Tab = "finance" | "transactions" | "customers" | "ledger" | "liquidity" | "rates" | "alerts" | "feedback" | "contact" | "team";
+export type Tab = "finance" | "transactions" | "customers" | "ledger" | "liquidity" | "rates" | "alerts" | "feedback" | "contact" | "team" | "expenses";
 
 const TABS: [Tab, string, typeof LayoutDashboard][] = [
   ["finance", "المالية", LayoutDashboard],
@@ -92,6 +96,7 @@ const TABS: [Tab, string, typeof LayoutDashboard][] = [
   ["customers", "العملاء", Users],
   ["ledger", "الحسابات", HandCoins],
   ["liquidity", "السيولة", Wallet],
+  ["expenses", "المصروفات", Receipt],
   ["rates", "الأسعار", TrendingUp],
   ["alerts", "تنبيهات الأسعار", BellRing],
   ["feedback", "الاقتراحات والشكاوى", MessageSquareText],
@@ -106,6 +111,7 @@ const TAB_PERM: Record<Tab, (me: Me) => boolean> = {
   customers: (me) => canDo(me, "customers") || canDo(me, "tx_add"),
   ledger: (me) => canDo(me, "ledger"),
   liquidity: (me) => canDo(me, "liquidity"),
+  expenses: (me) => canDo(me, "liquidity"),
   rates: (me) => canDo(me, "rates"),
   alerts: (me) => canDo(me, "inbox"),
   feedback: (me) => canDo(me, "inbox"),
@@ -133,6 +139,8 @@ export interface AdminData {
   costUsd: Record<string, number>;
   /** Gain / loss from selling currency back (withdrawals with a rate). */
   exchange: ExchangeLine[];
+  /** Running costs (rent, salaries…), valued at his own cost. */
+  expenses: ExpenseLine[];
   /** Liquidity accounts per currency (editable on the liquidity page). */
   accounts: AccountMap;
   saveAccounts: (map: AccountMap, summary: string) => Promise<void>;
@@ -282,6 +290,7 @@ export default function AdminApp({ me, onSignOut }: { me: Me; onSignOut?: () => 
   const balances = useMemo(() => computeBalances(liquidity, usd), [liquidity, usd, accounts]); // eslint-disable-line react-hooks/exhaustive-deps
   const { costs, exchange } = useMemo(() => costBasis(movements), [movements]);
   const costUsd = useMemo(() => costTable(costs, usd), [costs, usd]);
+  const expenses = useMemo(() => expenseLines(movements, costUsd), [movements, costUsd]);
 
   const data: AdminData = useMemo(
     () => ({
@@ -296,6 +305,7 @@ export default function AdminApp({ me, onSignOut }: { me: Me; onSignOut?: () => 
       costs,
       costUsd,
       exchange,
+      expenses,
       accounts,
       saveAccounts: (map, summary) =>
         guard(async () => {
@@ -408,14 +418,16 @@ export default function AdminApp({ me, onSignOut }: { me: Me; onSignOut?: () => 
           const before = movements.find((x) => x.id === input.id);
           const m = stamp(input, !before);
           await saveMovement(m);
-          logActivity({ kind: "movement", action: before ? "update" : "create", refId: m.id, summary: `${m.kind === "deposit" ? "إيداع" : "سحب"} ${fmtMoney(m.amount, m.currency)} ${m.currency}${m.rate ? ` بسعر ${m.rate}` : ""}${m.note ? ` — ${m.note}` : ""}` });
+          logActivity({ kind: "movement", action: before ? "update" : "create", refId: m.id, summary: m.kind === "expense"
+            ? `مصروف ${m.category ?? ""}: ${fmtMoney(m.amount, m.currency)} ${m.currency}${m.note ? ` — ${m.note}` : ""}`
+            : `${m.kind === "deposit" ? "إيداع" : "سحب"} ${fmtMoney(m.amount, m.currency)} ${m.currency}${m.rate ? ` بسعر ${m.rate}` : ""}${m.note ? ` — ${m.note}` : ""}` });
           setMovements((prev) => put(prev, m));
         }),
       removeMovement: (id) =>
         guard(async () => {
           const m = movements.find((x) => x.id === id);
           await deleteMovement(id);
-          logActivity({ kind: "movement", action: "delete", refId: id, summary: `حذف حركة سيولة ${m ? `${fmtMoney(m.amount, m.currency)} ${m.currency}` : ""}` });
+          logActivity({ kind: "movement", action: "delete", refId: id, summary: `${m?.kind === "expense" ? "حذف مصروف" : "حذف حركة سيولة"} ${m ? `${fmtMoney(m.amount, m.currency)} ${m.currency}` : ""}` });
           setMovements((prev) => prev.filter((x) => x.id !== id));
         }),
       upsertAlert: (a) =>
@@ -443,7 +455,7 @@ export default function AdminApp({ me, onSignOut }: { me: Me; onSignOut?: () => 
           setFeedback((prev) => prev.filter((x) => x.id !== id));
         }),
     }),
-    [routes, usd, customers, txs, obligations, movements, liquidity, balances, costs, costUsd, exchange, accounts, alerts, feedback, guard, me, can, staff, activity, reloadActivity]
+    [routes, usd, customers, txs, obligations, movements, liquidity, balances, costs, costUsd, exchange, expenses, accounts, alerts, feedback, guard, me, can, staff, activity, reloadActivity]
   );
 
   const badge: Partial<Record<Tab, number>> = {
@@ -570,6 +582,8 @@ export default function AdminApp({ me, onSignOut }: { me: Me; onSignOut?: () => 
           <AlertsTab data={data} />
         ) : shown === "feedback" ? (
           <FeedbackTab data={data} />
+        ) : shown === "expenses" ? (
+          <ExpensesTab data={data} />
         ) : shown === "team" ? (
           <TeamTab data={data} />
         ) : shown === "contact" ? (
