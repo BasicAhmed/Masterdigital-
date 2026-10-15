@@ -35,9 +35,12 @@ export default function Footer() {
           )}
         </div>
 
-        <p className="text-center text-xs text-subtle">
-          © {new Date().getFullYear()} Master Digital. الأسعار المعروضة تقريبية ويتم تأكيدها وقت الطلب.
-        </p>
+        <div className="text-center sm:text-left">
+          <p className="text-sm font-semibold text-white">ثقتكم أساس نجاحنا، وخدمتكم أولويتنا.</p>
+          <p className="mt-1 text-xs text-subtle">
+            © {new Date().getFullYear()} Master Digital Services. الأسعار المعروضة تقريبية ويتم تأكيدها وقت الطلب.
+          </p>
+        </div>
       </div>
 
       <div className="container-page mt-6 flex justify-center border-t border-white/10 pt-5">

@@ -11,7 +11,7 @@ export default function Brand({ size = 40, sub }: { size?: number; sub?: string 
         <span className="block font-display text-[15px] font-extrabold tracking-wide text-ink" dir="ltr">
           MASTER <span className="text-primary">DIGITAL</span>
         </span>
-        <span className="block text-[10.5px] font-medium text-subtle">{sub ?? "ماستر للخدمات المصرفية"}</span>
+        <span className="block text-[10.5px] font-medium text-subtle">{sub ?? "ماستر للحلول والخدمات الرقمية"}</span>
       </span>
     </span>
   );

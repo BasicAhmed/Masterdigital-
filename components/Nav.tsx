@@ -8,6 +8,7 @@ import ThemeToggle from "./ThemeToggle";
 const LINKS = [
   { href: "#rates", label: "الأسعار" },
   { href: "#calculator", label: "الحاسبة" },
+  { href: "#services", label: "خدماتنا" },
   { href: "#why", label: "لماذا ماستر" },
   { href: "#how", label: "كيف تعمل" },
   { href: "#faq", label: "الأسئلة الشائعة" },

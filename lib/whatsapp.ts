@@ -50,7 +50,7 @@ export function buildAvailabilityMessage(fromCode: string, toCode: string, fromN
 }
 
 export const MESSAGES = {
-  general: "السلام عليكم 👋\nعندي استفسار عن التحويل عن طريق Master Digital.",
+  general: "السلام عليكم 👋\nعندي استفسار عن خدمات Master Digital Services.",
   rates: "السلام عليكم 👋\nممكن تأكد لي أسعار اليوم؟",
 };
 

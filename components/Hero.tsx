@@ -66,13 +66,13 @@ export default function Hero({ rates, disabledFlows }: { rates: RateRow[]; disab
           </p>
 
           <h1 className="mt-6 font-display text-[clamp(2.5rem,10.5vw,4.75rem)] font-black leading-[1.22] tracking-tight">
-            حوّل أموالك
-            <span className="block text-brand-gold">خلال دقائق</span>
+            ماستر...
+            <span className="block text-brand-gold">نحو تجربة خدمة أرقى</span>
           </h1>
 
           <p className="mt-6 max-w-lg text-base leading-loose text-muted sm:text-lg">
-            ماستر للخدمات المصرفية يحوّل ليك بين السودان وجنوب السودان ومصر وأوغندا ورواندا وكينيا والسعودية والإمارات، وبالـ USDT والدولار كاش — في الاتجاهين. تشوف
-            السعر والمبلغ اللي حيوصل قبل ما ترسل أي حاجة.
+            نقدم لكم حلولًا مالية ورقمية متكاملة، بسرعة وأمان وموثوقية. تحويلات بين السودان وجنوب السودان ومصر وأوغندا ورواندا وكينيا
+            والسعودية والإمارات، وبالـ USDT والدولار كاش — وتشوف السعر والمبلغ اللي حيوصل قبل ما ترسل أي حاجة.
           </p>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
