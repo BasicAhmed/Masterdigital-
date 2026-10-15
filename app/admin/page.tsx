@@ -35,30 +35,13 @@ export default function AdminPage() {
     });
   }, []);
 
-  /** Permissions are remembered on this device so the admin opens straight
-   *  away; they're re-checked in the background every time (and Firestore
-   *  rules enforce them regardless). */
   const check = useCallback(() => {
     if (!user) return;
-    const KEY = `masterdigital:access:${user.uid}`;
-    let remembered: MyAccess | null = null;
-    try {
-      remembered = JSON.parse(window.localStorage.getItem(KEY) || "null");
-    } catch {}
-    setAccess(remembered?.kind === "ok" ? remembered : null);
+    setAccess(null);
     setError("");
     loadMyAccess(user.uid, user.email ?? "")
-      .then((fresh) => {
-        try {
-          if (fresh.kind === "ok") window.localStorage.setItem(KEY, JSON.stringify(fresh));
-          else window.localStorage.removeItem(KEY);
-        } catch {}
-        // only re-render if something actually changed
-        setAccess((prev) => (JSON.stringify(prev) === JSON.stringify(fresh) ? prev : fresh));
-      })
-      .catch((e) => {
-        if (!remembered) setError(e instanceof Error ? e.message : String(e));
-      });
+      .then(setAccess)
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, [user]);
 
   useEffect(check, [check]);
