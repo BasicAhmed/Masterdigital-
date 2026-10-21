@@ -1,6 +1,6 @@
 "use client";
 
-import Brand from "./Brand";
+import SiteBrand from "./SiteBrand";
 import { Megaphone } from "lucide-react";
 import WhatsAppIcon from "./WhatsAppIcon";
 import { useContact } from "./ContactContext";
@@ -12,7 +12,7 @@ export default function Footer() {
   return (
     <footer className="ribbon py-10 pb-24 sm:pb-10 on-navy">
       <div className="container-page flex flex-col items-center justify-between gap-5 sm:flex-row">
-        <Brand size={36} />
+        <SiteBrand size={36} />
 
         <div className="flex items-center gap-2">
           <a
@@ -38,7 +38,7 @@ export default function Footer() {
         <div className="text-center sm:text-left">
           <p className="text-sm font-semibold text-white">ثقتكم أساس نجاحنا، وخدمتكم أولويتنا.</p>
           <p className="mt-1 text-xs text-subtle">
-            © {new Date().getFullYear()} Master Digital Services. الأسعار المعروضة تقريبية ويتم تأكيدها وقت الطلب.
+            © {new Date().getFullYear()} تحديث سعر الصرف. الأسعار المعروضة تقريبية ويتم تأكيدها وقت الطلب.
           </p>
         </div>
       </div>

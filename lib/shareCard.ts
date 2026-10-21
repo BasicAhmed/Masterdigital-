@@ -423,7 +423,7 @@ async function createQrCanvas(data: string, size: number): Promise<HTMLCanvasEle
 
 export async function createShareCardBlob(params: ShareCardParams): Promise<Blob | null> {
   await loadFonts();
-  const [logo, qr] = await Promise.all([loadImage("/logo.png"), createQrCanvas(window.location.origin, 440)]);
+  const [logo, qr] = await Promise.all([loadImage("/brand/site-logo.png"), createQrCanvas(window.location.origin, 440)]);
 
   const canvas = document.createElement("canvas");
   canvas.width = W;
@@ -446,33 +446,19 @@ export async function createShareCardBlob(params: ShareCardParams): Promise<Blob
   halo.addColorStop(1, "rgba(63,123,219,0)");
   ctx.fillStyle = halo;
   ctx.fillRect(W / 2 - 200, tileY - 90, 400, tile + 180);
+  // the round badge logo, with a soft glow
   ctx.save();
-  ctx.shadowColor = "rgba(63,123,219,0.6)";
-  ctx.shadowBlur = 44;
-  rr(ctx, tileX, tileY, tile, tile, 30);
-  ctx.fillStyle = "#FFFFFF"; // the shield logo is made for a white tile
+  ctx.shadowColor = "rgba(201,162,39,0.55)";
+  ctx.shadowBlur = 40;
+  ctx.beginPath();
+  ctx.arc(W / 2, tileY + tile / 2, tile / 2, 0, Math.PI * 2);
+  ctx.fillStyle = "#03152D";
   ctx.fill();
   ctx.restore();
-  ctx.strokeStyle = brandGradient(ctx, tileX, tileY + tile, tileX + tile, tileY);
-  ctx.lineWidth = 2.5;
-  rr(ctx, tileX + 1.25, tileY + 1.25, tile - 2.5, tile - 2.5, 29);
-  ctx.stroke();
-  if (logo) {
-    const lh = 96;
-    const lw = (logo.width / logo.height) * lh;
-    ctx.drawImage(logo, tileX + (tile - lw) / 2, tileY + (tile - lh) / 2, lw, lh);
-  }
+  if (logo) ctx.drawImage(logo, tileX, tileY, tile, tile);
 
-  const wmFont = `700 46px ${AR}`;
-  const masterW = width(ctx, "MASTER ", wmFont);
-  const digitalW = width(ctx, "DIGITAL", wmFont);
-  const wmLeft = W / 2 - (masterW + digitalW) / 2;
   const wmY = tileY + tile + 62;
-  text(ctx, "MASTER ", wmLeft, wmY, { font: wmFont, color: C.ink });
-  text(ctx, "DIGITAL", wmLeft + masterW, wmY, {
-    font: wmFont,
-    color: brandGradient(ctx, wmLeft + masterW, 0, wmLeft + masterW + digitalW, 0),
-  });
+  text(ctx, "تحديث سعر الصرف", W / 2, wmY, { font: `800 46px ${AR}`, color: C.ink, align: "center", dir: "rtl" });
 
   const now = new Date();
   const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -670,7 +656,7 @@ export async function createShareCardBlob(params: ShareCardParams): Promise<Blob
     ctx.imageSmoothingEnabled = true;
   }
   const ctaR = M + cw - 40;
-  text(ctx, "حوّل فلوسك الآن مع ماستر", ctaR, fy + 56, { font: `800 38px ${AR}`, color: C.navy, align: "right", dir: "rtl" });
+  text(ctx, "حوّل فلوسك الآن", ctaR, fy + 56, { font: `800 38px ${AR}`, color: C.navy, align: "right", dir: "rtl" });
   text(ctx, window.location.host, ctaR, fy + 94, { font: `600 26px ${MONO}`, color: "rgba(2,8,23,0.72)", align: "right" });
 
   return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), "image/png"));

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Brand from "./Brand";
+import SiteBrand from "./SiteBrand";
 import { Menu, X } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 
@@ -9,7 +9,7 @@ const LINKS = [
   { href: "#rates", label: "الأسعار" },
   { href: "#calculator", label: "الحاسبة" },
   { href: "#services", label: "خدماتنا" },
-  { href: "#why", label: "لماذا ماستر" },
+  { href: "#why", label: "لماذا نحن" },
   { href: "#how", label: "كيف تعمل" },
   { href: "#faq", label: "الأسئلة الشائعة" },
   { href: "#feedback", label: "اقتراحات وشكاوى" },
@@ -35,7 +35,7 @@ export default function Nav() {
     >
       <nav className="container-page flex h-16 items-center justify-between">
         <a href="#top" className="flex items-center gap-2">
-          <Brand />
+          <SiteBrand />
         </a>
 
         <div className="hidden items-center gap-7 lg:flex">

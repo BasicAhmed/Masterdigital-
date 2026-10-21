@@ -24,7 +24,7 @@ function select(detail: SelectPairDetail) {
   window.dispatchEvent(new CustomEvent<SelectPairDetail>(SELECT_PAIR_EVENT, { detail }));
 }
 
-/** First screen: what Master Digital does, in one line, with the tool that
+/** First screen: what the site does, in one line, with the tool that
  *  does it right beside it. The navy field and gold thread come from the
  *  shield logo, which also sits large and faint behind the headline. */
 export default function Hero({ rates, disabledFlows }: { rates: RateRow[]; disabledFlows: string[] }) {
@@ -43,7 +43,7 @@ export default function Hero({ rates, disabledFlows }: { rates: RateRow[]; disab
     <section id="top" className="navy-field on-navy relative overflow-hidden">
       <div aria-hidden="true" className="shield-lines pointer-events-none absolute inset-0" />
       <Image
-        src="/logo.png"
+        src="/brand/site-logo.png"
         alt=""
         aria-hidden="true"
         width={720}
@@ -66,7 +66,7 @@ export default function Hero({ rates, disabledFlows }: { rates: RateRow[]; disab
           </p>
 
           <h1 className="mt-6 font-display text-[clamp(2.5rem,10.5vw,4.75rem)] font-black leading-[1.22] tracking-tight">
-            ماستر...
+            تحديث سعر الصرف
             <span className="block text-brand-gold">نحو تجربة خدمة أرقى</span>
           </h1>
 

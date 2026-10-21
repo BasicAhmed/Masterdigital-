@@ -221,7 +221,7 @@ export default function Calculator({ rates, disabledFlows = [] }: { rates: RateR
 
       if (navigator.canShare?.({ files: [file] })) {
         try {
-          await navigator.share({ files: [file], title: "Master Digital" });
+          await navigator.share({ files: [file], title: "تحديث سعر الصرف" });
         } catch {
           // user cancelled the share sheet — no-op
         }
@@ -238,7 +238,7 @@ export default function Calculator({ rates, disabledFlows = [] }: { rates: RateR
     } catch {
       // canvas/share unavailable — fall back to a plain text share/copy
       const text = [
-        `Master Digital — ${fromCurrency.code} ⇄ ${toCurrency.code}`,
+        `تحديث سعر الصرف — ${fromCurrency.code} ⇄ ${toCurrency.code}`,
         `${amountSent.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${fromCurrency.code} = ${finalAmountReceived.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${toCurrency.code}`,
       ].join("\n");
       if (navigator.share) {

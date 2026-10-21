@@ -28,7 +28,7 @@ export function buildOrderMessage(o: OrderDetails): string {
   const to = `${o.toName ?? o.toCurrency} ${ltr(`(${o.toCurrency})`)}`;
   return [
     "السلام عليكم 👋",
-    "عاوز أعمل تحويل عن طريق Master Digital:",
+    "عاوز أعمل تحويل:",
     "",
     `🔁 *التحويل:* من ${from} إلى ${to}`,
     `💸 *حرسل:* ${ltr(`${o.amountSent} ${o.fromCurrency}`)}`,
@@ -50,7 +50,7 @@ export function buildAvailabilityMessage(fromCode: string, toCode: string, fromN
 }
 
 export const MESSAGES = {
-  general: "السلام عليكم 👋\nعندي استفسار عن خدمات Master Digital Services.",
+  general: "السلام عليكم 👋\nعندي استفسار عن خدماتكم.",
   rates: "السلام عليكم 👋\nممكن تأكد لي أسعار اليوم؟",
 };
 

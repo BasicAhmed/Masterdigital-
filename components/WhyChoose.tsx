@@ -13,7 +13,7 @@ export default function WhyChoose() {
   return (
     <section id="why" className="border-t border-border py-16 sm:py-24">
       <div className="container-page">
-        <h2 className="section-heading">لماذا ماستر</h2>
+        <h2 className="section-heading">لماذا نحن</h2>
 
         <div className="mt-10 grid gap-x-10 sm:grid-cols-2 lg:grid-cols-3">
           {ITEMS.map(({ icon: Icon, title, desc }) => (

@@ -109,13 +109,13 @@ async function processAlerts(db: Firestore): Promise<{ reached: number; emailed:
         body: JSON.stringify({
           from: process.env.ALERT_FROM_EMAIL,
           to: a.email,
-          subject: `Master Digital — السعر وصل: ${a.from} → ${a.to}`,
+          subject: `تحديث سعر الصرف — السعر وصل: ${a.from} → ${a.to}`,
           html: `<div dir="rtl" style="font-family:sans-serif;font-size:16px;line-height:1.8">
             <p>السلام عليكم${a.name ? ` ${a.name}` : ""}،</p>
             <p>السعر اللي طلبت تنبيه عليه وصل: <b>${CURRENCIES[a.from].currency} ← ${CURRENCIES[a.to].currency}</b></p>
             <p dir="ltr" style="font-size:20px"><b>1 ${one} = ${formatRate(rate)} ${other}</b></p>
             <p>السعر المطلوب كان <span dir="ltr">${formatRate(a.target)}</span>. راسلنا على واتساب عشان نكمل ليك التحويل.</p>
-            <p>Master Digital — ماستر للخدمات المصرفية</p></div>`,
+            <p>تحديث سعر الصرف</p></div>`,
         }),
       }).catch(() => null);
       if (res && res.ok) {
