@@ -93,15 +93,9 @@ export default function AdminLogin() {
         </form>
       </div>
 
-      <a
-        href="https://ninotechy.com"
-        target="_blank"
-        rel="noopener"
-        dir="ltr"
-        className="absolute bottom-6 left-1/2 -translate-x-1/2 text-[11px] font-medium text-white/60 transition-colors hover:text-white"
-      >
-        By <span className="font-bold text-white/85">Nino Techy</span>
-      </a>
+      <p dir="ltr" className="absolute bottom-6 left-1/2 -translate-x-1/2 text-[11px] font-medium text-white/60">
+        Made by <span className="font-bold text-white/85">Ninotechy</span>
+      </p>
     </div>
   );
 }
