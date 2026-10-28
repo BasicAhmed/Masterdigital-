@@ -52,7 +52,7 @@ service cloud.firestore {
     }
     match /settings/{doc} {
       allow read: if true;
-      allow write: if (doc in ["margin", "flows", "usdtPrices"] && can("rates"))
+      allow write: if (doc in ["margin", "flows", "usdtPrices", "autoUpdate"] && can("rates"))
         || (doc == "accounts" && can("liquidity"))
         || (doc in ["contact", "bankAccounts", "students"] && can("contact"))
         || (doc == "dailyTarget" && can("finance"));

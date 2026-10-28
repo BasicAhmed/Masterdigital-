@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeftRight, Power, RefreshCw } from "lucide-react";
+import { ArrowLeftRight, Hand, Power, RefreshCw, Timer } from "lucide-react";
 import {
   setRouteMargin,
   computeRate,
@@ -19,7 +19,8 @@ import { logActivity } from "@/lib/activity";
 import { formatSmart as fs } from "@/lib/format";
 import { formatSmart } from "@/lib/format";
 import { formatRelativeTime } from "@/lib/relativeTime";
-import { flowKey, setDisabledFlows, setMarginPercent } from "@/lib/settings";
+import { flowKey, getAutoUpdate, setAutoUpdate, setDisabledFlows, setMarginPercent } from "@/lib/settings";
+import { AUTO_DEFAULT, INTERVALS, intervalLabel, type AutoUpdateConfig, type UpdateMode } from "@/lib/autoUpdateConfig";
 import { PAIRS, CURRENCIES, CURRENCY_ORDER, type CurrencyCode } from "@/lib/corridors";
 import { demoMode } from "@/lib/store";
 
@@ -84,8 +85,14 @@ export default function RatesTab({ state, onError }: { state: RatesState; onErro
   const [savingPrice, setSavingPrice] = useState<CurrencyCode | null>(null);
   const [routeFilter, setRouteFilter] = useState<CurrencyCode | "ALL">("ALL");
 
+  const [auto, setAuto] = useState<AutoUpdateConfig>(AUTO_DEFAULT);
+  const [savingAuto, setSavingAuto] = useState(false);
+
   useEffect(() => {
     getUsdtPrices().then(setPrices);
+    getAutoUpdate().then(setAuto);
+    // nudge the scheduler: if an automatic update is due, it runs now
+    fetch("/api/rates/tick", { method: "POST" }).catch(() => {});
   }, []);
   const lastUpdated = rates
     .map((r) => r.updatedAt)
@@ -191,6 +198,26 @@ export default function RatesTab({ state, onError }: { state: RatesState; onErro
     setSavingMargin(false);
   }
 
+  async function saveAuto(mode: UpdateMode, everyMinutes: number) {
+    if (mode === auto.mode && everyMinutes === auto.everyMinutes) return;
+    const before = auto;
+    setAuto({ ...auto, mode, everyMinutes });
+    setSavingAuto(true);
+    onError(null);
+    try {
+      await setAutoUpdate(mode, everyMinutes);
+      logActivity({
+        kind: "rates",
+        action: "update",
+        summary: mode === "auto" ? `تحديث الأسعار تلقائي — ${intervalLabel(everyMinutes)}` : "تحديث الأسعار يدوي",
+      });
+    } catch (err) {
+      setAuto(before);
+      onError(err instanceof Error ? err.message : String(err));
+    }
+    setSavingAuto(false);
+  }
+
   async function updateNow() {
     setFxUpdating(true);
     setFxMessage(null);
@@ -261,6 +288,73 @@ export default function RatesTab({ state, onError }: { state: RatesState; onErro
           </button>
         </div>
         {fxMessage && <p className="border-t border-border/60 px-5 py-2.5 text-xs text-muted">{fxMessage}</p>}
+
+        {/* automatic or manual updates */}
+        <div className="border-t border-border/60 p-5">
+          <p className="mb-2 text-xs font-medium text-subtle">طريقة تحديث الأسعار</p>
+          <div className="grid grid-cols-2 gap-2">
+            {(
+              [
+                ["auto", Timer, "تلقائي", "من Binance حسب الوقت اللي تختاره"],
+                ["manual", Hand, "يدوي", "بس لما تضغط «تحديث الآن»"],
+              ] as const
+            ).map(([m, Icon, title, hint]) => {
+              const on = auto.mode === m;
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  disabled={savingAuto}
+                  onClick={() => saveAuto(m, auto.everyMinutes)}
+                  aria-pressed={on}
+                  className={`rounded-xl border p-3 text-start transition-all disabled:opacity-70 ${
+                    on ? "border-primary bg-primary/10 shadow-soft" : "border-border bg-surface hover:border-primary/50"
+                  }`}
+                >
+                  <span className={`flex items-center gap-1.5 text-sm font-bold ${on ? "text-primary" : "text-ink"}`}>
+                    <Icon size={15} /> {title}
+                  </span>
+                  <span className="mt-0.5 block text-[11px] leading-relaxed text-muted">{hint}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {auto.mode === "auto" ? (
+            <>
+              <p className="mb-2 mt-4 text-xs font-medium text-subtle">يتحدّث كل:</p>
+              <div className="flex flex-wrap gap-2">
+                {INTERVALS.map(({ minutes, label }) => {
+                  const on = auto.everyMinutes === minutes;
+                  return (
+                    <button
+                      key={minutes}
+                      type="button"
+                      disabled={savingAuto}
+                      onClick={() => saveAuto("auto", minutes)}
+                      aria-pressed={on}
+                      className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-all disabled:opacity-70 ${
+                        on ? "border-primary bg-primary text-white" : "border-border bg-surface text-ink hover:border-primary/50"
+                      }`}
+                    >
+                      {label.replace(/^كل /, "")}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-3 text-[11px] leading-relaxed text-muted">
+                {auto.lastResult
+                  ? `آخر تحديث تلقائي ${formatRelativeTime(auto.lastResult.at)}${auto.lastResult.ok ? "" : ` — لم ينجح: ${auto.lastResult.error ?? ""}`}`
+                  : "لسه ما حصل تحديث تلقائي."}{" "}
+                الأسعار اللي كتبتها يدوياً في القسم ١ ما بتتغيّر بالتحديث التلقائي.
+              </p>
+            </>
+          ) : (
+            <p className="mt-3 text-[11px] leading-relaxed text-muted">
+              الأسعار ثابتة لحد ما تضغط «تحديث الآن» أو تكتب السعر بنفسك في القسم ١.
+            </p>
+          )}
+        </div>
 
         <div className="border-t border-border/60 p-5">
           <div>

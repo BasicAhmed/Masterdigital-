@@ -1,0 +1,14 @@
+# Keeps automatic price updates on time even when nobody opens the site.
+# It only asks; the server runs an update only if the owner chose «تلقائي»
+# in /admin and the interval he picked has passed.
+name: rates-tick
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - run: curl -fsS -X POST --max-time 90 https://masterdigital-nu.vercel.app/api/rates/tick

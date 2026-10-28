@@ -1,5 +1,6 @@
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db, firebaseEnabled } from "./firebase";
+import { AUTO_DEFAULT, readAutoUpdate, type AutoUpdateConfig } from "./autoUpdateConfig";
 
 const DEFAULT_MARGIN_PERCENT = 2.5;
 const DEFAULT_DAILY_TARGET = 2000;
@@ -154,4 +155,22 @@ export async function getContactSettings(): Promise<ContactSettings> {
 export async function setContactSettings(c: ContactSettings) {
   if (!firebaseEnabled || !db) throw new Error("Firebase is not configured — see .env.example.");
   await setDoc(doc(db, "settings", "contact"), { ...c, updatedAt: serverTimestamp() });
+}
+
+/* ---------- Automatic / manual price updates ---------- */
+
+export async function getAutoUpdate(): Promise<AutoUpdateConfig> {
+  if (!firebaseEnabled || !db) return AUTO_DEFAULT;
+  try {
+    const snap = await getDoc(doc(db, "settings", "autoUpdate"));
+    return snap.exists() ? readAutoUpdate(snap.data()) : AUTO_DEFAULT;
+  } catch {
+    return AUTO_DEFAULT;
+  }
+}
+
+/** Saves only the owner's choice; lastRunAt/lastResult are written by the server. */
+export async function setAutoUpdate(mode: AutoUpdateConfig["mode"], everyMinutes: number) {
+  if (!firebaseEnabled || !db) throw new Error("Firebase is not configured — see .env.example.");
+  await setDoc(doc(db, "settings", "autoUpdate"), { mode, everyMinutes, updatedAt: serverTimestamp() }, { merge: true });
 }
