@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Download, Pencil, Plus, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { Check, Copy, Download, Pencil, Plus, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { CURRENCY_LIST, ROUTE_KEYS, routeKey, findPair } from "@/lib/currencies";
 import { fmt, fmtMoney, fmtPct, fmtRate, fmtUsd } from "@/lib/format";
 import { STATUS_LABEL, type Transaction, type TxStatus } from "@/lib/data";
@@ -10,21 +10,65 @@ import type { AdminData } from "./AdminApp";
 import { Empty, Modal, RouteTag, StatusChip } from "./ui";
 import { exportTransactions } from "./txExport";
 
+/** Copies `value` to the clipboard; shows a tick for a moment. */
+async function copyText(value: string) {
+  try {
+    await navigator.clipboard.writeText(value);
+    return true;
+  } catch {
+    // older phones / no permission: fall back to a hidden textarea
+    const el = document.createElement("textarea");
+    el.value = value;
+    el.style.position = "fixed";
+    el.style.opacity = "0";
+    document.body.appendChild(el);
+    el.select();
+    const ok = document.execCommand("copy");
+    el.remove();
+    return ok;
+  }
+}
+
+function CopyValue({ children, value }: { children: React.ReactNode; value: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        if (await copyText(value)) {
+          setDone(true);
+          setTimeout(() => setDone(false), 1200);
+        }
+      }}
+      title="نسخ"
+      className="inline-flex items-center gap-1.5 rounded-lg px-1 -mx-1 text-left transition-colors hover:bg-primary/10"
+    >
+      <span>{children}</span>
+      {done ? <Check size={13} className="shrink-0 text-emerald-500" /> : <Copy size={13} className="shrink-0 text-subtle" />}
+    </button>
+  );
+}
+
+/** Plain number for pasting into a bank app: no thousands separators. */
+const raw = (n: number) => String(Math.round(n * 100) / 100);
+
 export function TxDetail({ tx, data, onClose }: { tx: Transaction; data: AdminData; onClose: () => void }) {
   const [confirming, setConfirming] = useState(false);
   const pair = findPair(tx.from, tx.to);
   const money = data.can("finance");
   const editable = data.canEditTx(tx);
+  const [copiedAll, setCopiedAll] = useState(false);
   const rows: [string, React.ReactNode][] = [
+    ["رقم المعاملة", <CopyValue key="ref" value={tx.ref}><span className="num" dir="ltr">{tx.ref}</span></CopyValue>],
     ["التاريخ", <span className="num" dir="ltr" key="d">{tx.date}</span>],
     ["العميل", tx.customerName],
     ["المسار", <RouteTag key="r" from={tx.from} to={tx.to} />],
-    ["المبلغ", `${fmtMoney(tx.amount, tx.from)} ${tx.from}`],
-    ["سعر العميل", `${fmtRate(tx.rate)} ${pair ? `${pair.quote} / ${fmt(pair.unit)} ${pair.base}` : ""}`],
+    ["المبلغ", <CopyValue key="a" value={raw(tx.amount)}>{`${fmtMoney(tx.amount, tx.from)} ${tx.from}`}</CopyValue>],
+    ["سعر العميل", <CopyValue key="r" value={String(tx.rate)}>{`${fmtRate(tx.rate)} ${pair ? `${pair.quote} / ${fmt(pair.unit)} ${pair.base}` : ""}`}</CopyValue>],
     ["سعر التكلفة", fmtRate(tx.cost)],
     ["الرسوم", tx.fee ? `${fmtMoney(tx.fee, tx.feeSide === "from" ? tx.from : tx.to)} ${tx.feeSide === "from" ? tx.from : tx.to}` : "—"],
     ["التكاليف", tx.expense ? `${fmtMoney(tx.expense, tx.expenseSide === "from" ? tx.from : tx.to)} ${tx.expenseSide === "from" ? tx.from : tx.to}` : "—"],
-    ["المستلم يستلم", `${fmtMoney(tx.payout, tx.to)} ${tx.to}`],
+    ["المستلم يستلم", <CopyValue key="p" value={raw(tx.payout)}>{`${fmtMoney(tx.payout, tx.to)} ${tx.to}`}</CopyValue>],
     ["هامش المسار", fmtPct(tx.marginPercent)],
     ...(money
       ? ([
@@ -35,7 +79,7 @@ export function TxDetail({ tx, data, onClose }: { tx: Transaction; data: AdminDa
       : []),
     ["طريقة الدفع", tx.payMethod || "—"],
     ["طريقة التسليم", tx.payoutMethod || "—"],
-    ["المستلم", tx.recipient || "—"],
+    ["المستلم", tx.recipient ? <CopyValue key="rc" value={tx.recipient}>{tx.recipient}</CopyValue> : "—"],
     ["ملاحظات", tx.notes || "—"],
     ["سجّلها", tx.createdByName || "غير معروف"],
     ...(tx.updatedByName ? ([["آخر تعديل", `${tx.updatedByName} · ${tx.updatedAt?.slice(0, 16).replace("T", " ") ?? ""}`]] as [string, React.ReactNode][]) : []),
@@ -64,6 +108,30 @@ export function TxDetail({ tx, data, onClose }: { tx: Transaction; data: AdminDa
           </div>
         ))}
       </dl>
+      <button
+        type="button"
+        onClick={async () => {
+          const lines = [
+            `رقم المعاملة: ${tx.ref}`,
+            `التاريخ: ${tx.date}`,
+            `العميل: ${tx.customerName}`,
+            `المبلغ: ${fmtMoney(tx.amount, tx.from)} ${tx.from}`,
+            `السعر: ${fmtRate(tx.rate)}`,
+            `المستلم يستلم: ${fmtMoney(tx.payout, tx.to)} ${tx.to}`,
+            tx.recipient && `المستلم: ${tx.recipient}`,
+            tx.payoutMethod && `طريقة التسليم: ${tx.payoutMethod}`,
+            `الحالة: ${STATUS_LABEL[tx.status]}`,
+          ].filter(Boolean);
+          if (await copyText(lines.join("\n"))) {
+            setCopiedAll(true);
+            setTimeout(() => setCopiedAll(false), 1500);
+          }
+        }}
+        className="btn-ghost mt-3 w-full py-2.5 text-xs"
+      >
+        {copiedAll ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+        {copiedAll ? "تم النسخ" : "نسخ تفاصيل المعاملة"}
+      </button>
       {!editable && <p className="mt-3 text-center text-[11px] text-subtle">ما عندك صلاحية تعدّل المعاملة دي.</p>}
       {editable && <div className="mt-4 flex gap-2">
         <button
