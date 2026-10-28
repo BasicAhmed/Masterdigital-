@@ -36,7 +36,7 @@ export function buildOrderMessage(o: OrderDetails): string {
     ...(o.rateLine ? [`📊 *السعر:* ${ltr(o.rateLine)}`] : []),
     ...(o.discountNote ? [`🎁 ${o.discountNote}`] : []),
     "",
-    "ممكن ترسل لي تفاصيل الحساب عشان أحوّل؟ شكراً 🙏",
+    "ممكن ترسل لي تفاصيل الحساب عشان أحوّل؟ شكراً 💙🤝",
   ].join("\n");
 }
 
