@@ -5,7 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ArrowLeftRight, Check, ChevronLeft, ChevronRight, Lock, Search, Sparkles, UserPlus, X } from "lucide-react";
 import { CURRENCIES, CURRENCY_LIST, destinationsFor, routeKey, type CurrencyCode } from "@/lib/currencies";
 import { findPair as findCorridor } from "@/lib/corridors";
-import { computeTx, perUnit, rateFromAmounts, type FeeSide } from "@/lib/calc";
+import { computeTx, liquidityRatesOf, perUnit, rateFromAmounts, type FeeSide } from "@/lib/calc";
 import { fmtMoney, fmtRate, fmtUsd, todayStr } from "@/lib/format";
 import { blankCustomer, nextCustomerCode, nextRef, PAYMENT_METHODS, STATUS_LABEL, type Customer, type Transaction, type TxStatus } from "@/lib/data";
 import { newId } from "@/lib/store";
@@ -157,7 +157,14 @@ export default function TransactionForm({
   const decimalsTo = CURRENCIES[to]?.decimals ?? 2;
   const siteAmount = sitePer && num(amount) ? Math.floor(num(amount) * sitePer * Math.pow(10, decimalsTo)) / Math.pow(10, decimalsTo) : 0;
 
-  const calc = computeTx({ from, to, amount: num(amount), rate, cost, fee: feeNow, feeSide, expense: num(expense), expenseSide, usd });
+  // Liquidity rates (units per 1 USDT) the profit is measured with: today's
+  // for a new deal, the ones saved with it when editing an old one.
+  const keptOld = !!edit && cost === edit.cost;
+  const saved = keptOld ? liquidityRatesOf(edit!) : null;
+  const liveCost = costOf(from, to) ?? 0;
+  const rateFrom = saved?.from ?? usd[from] ?? 0;
+  const rateTo = saved?.to ?? usd[to] ?? 0;
+  const calc = computeTx({ from, to, amount: num(amount), rate, cost, fee: feeNow, feeSide, expense: num(expense), expenseSide, usd: { ...usd, [from]: rateFrom, [to]: rateTo } });
   const both = num(amount) > 0 && num(received) > 0;
   const isLoss = both && calc.profitUsd < -1e-9;
 
@@ -254,6 +261,7 @@ export default function TransactionForm({
         amount: num(amount),
         rate,
         cost,
+        ...(rateFrom && rateTo ? { fromUsd: rateFrom, toUsd: rateTo } : {}),
         fee: feeNow,
         feeSide,
         expense: num(expense),
@@ -539,21 +547,28 @@ export default function TransactionForm({
             <p className="num mt-1 font-bold text-ink" dir="ltr">
               {cost ? fmtRate(cost) : "—"}
             </p>
-            <p className="mt-0.5 text-[10px] leading-snug text-subtle">
-              {edit && cost === edit.cost
-                ? "المحفوظ مع المعاملة"
-                : `${from} ${data.costs[from] ? fmtRate(data.costs[from]!.avg) : "سوق"} · ${to} ${data.costs[to] ? fmtRate(data.costs[to]!.avg) : "سوق"}`}
+            <p className="num mt-0.5 text-[10px] leading-snug text-subtle" dir="ltr">
+              {rateFrom ? fmtRate(rateFrom) : "—"} {from} · {rateTo ? fmtRate(rateTo) : "—"} {to} <span dir="rtl">(لكل 1 USDT)</span>
             </p>
+            <p className="mt-0.5 text-[10px] leading-snug text-subtle">
+              {keptOld ? "سعر السيولة المحفوظ مع المعاملة" : `سعر السيولة الحالي${data.costs[from] && data.costs[to] ? "" : " (أو السوق لو ما في إيداع بسعر)"}`}
+            </p>
+            {keptOld && liveCost && Math.abs(liveCost - cost) / cost > 1e-6 && (
+              <button type="button" onClick={() => setCost(liveCost)} className="mt-1.5 text-[11px] font-semibold text-primary hover:underline">
+                احسب بسعر السيولة الحالي
+              </button>
+            )}
           </div>
           <div className={`rounded-2xl p-3.5 ${!both ? "bg-surface2" : isLoss ? "bg-red-500/10" : "bg-emerald-500/10"}`}>
             <p className="text-[11px] text-muted">الربح</p>
             <p className={`num mt-1 font-bold ${!both ? "text-subtle" : isLoss ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"}`} dir="ltr">
               {both ? fmtUsd(calc.profitUsd) : "—"}
             </p>
-            {both && (
-              <p className="num mt-0.5 text-[10px] text-subtle" dir="ltr">
-                {fmtMoney(calc.gross + calc.spread, to)} − {fmtMoney(gross, to)} = {fmtMoney(calc.spread, to)}
-              </p>
+            {both && rateFrom > 0 && rateTo > 0 && (
+              <div className="num mt-1 space-y-0.5 text-[10px] leading-snug text-subtle" dir="ltr">
+                <p>{fmtMoney(num(amount), from)} ÷ {fmtRate(rateFrom)} = {(num(amount) / rateFrom).toFixed(4)}</p>
+                <p>{fmtMoney(gross, to)} ÷ {fmtRate(rateTo)} = {(gross / rateTo).toFixed(4)}</p>
+              </div>
             )}
           </div>
         </div>

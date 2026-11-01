@@ -6,6 +6,7 @@ import { CURRENCY_LIST, ROUTE_KEYS, routeKey, findPair } from "@/lib/currencies"
 import { fmt, fmtMoney, fmtPct, fmtRate, fmtUsd } from "@/lib/format";
 import { STATUS_LABEL, type Transaction, type TxStatus } from "@/lib/data";
 import { totals } from "@/lib/stats";
+import { liquidityRatesOf } from "@/lib/calc";
 import type { AdminData } from "./AdminApp";
 import { Empty, Modal, RouteTag, StatusChip } from "./ui";
 import { exportTransactions } from "./txExport";
@@ -58,6 +59,8 @@ export function TxDetail({ tx, data, onClose }: { tx: Transaction; data: AdminDa
   const money = data.can("finance");
   const editable = data.canEditTx(tx);
   const [copiedAll, setCopiedAll] = useState(false);
+  const liq = liquidityRatesOf(tx);
+  const gross = tx.payout + (tx.feeSide === "to" ? tx.fee : 0);
   const rows: [string, React.ReactNode][] = [
     ["رقم المعاملة", <CopyValue key="ref" value={tx.ref}><span className="num" dir="ltr">{tx.ref}</span></CopyValue>],
     ["التاريخ", <span className="num" dir="ltr" key="d">{tx.date}</span>],
@@ -70,6 +73,13 @@ export function TxDetail({ tx, data, onClose }: { tx: Transaction; data: AdminDa
     ["التكاليف", tx.expense ? `${fmtMoney(tx.expense, tx.expenseSide === "from" ? tx.from : tx.to)} ${tx.expenseSide === "from" ? tx.from : tx.to}` : "—"],
     ["المستلم يستلم", <CopyValue key="p" value={raw(tx.payout)}>{`${fmtMoney(tx.payout, tx.to)} ${tx.to}`}</CopyValue>],
     ["هامش المسار", fmtPct(tx.marginPercent)],
+    ...(money && liq
+      ? ([
+          ["سعر السيولة", <span key="lq" className="num" dir="ltr">{fmtRate(liq.from)} {tx.from} · {fmtRate(liq.to)} {tx.to}</span>],
+          ["قيمة المبلغ", <span key="lf" className="num" dir="ltr">{fmtMoney(tx.amount, tx.from)} ÷ {fmtRate(liq.from)} = {(tx.amount / liq.from).toFixed(4)}</span>],
+          ["قيمة المستلم", <span key="lt" className="num" dir="ltr">{fmtMoney(gross, tx.to)} ÷ {fmtRate(liq.to)} = {(gross / liq.to).toFixed(4)}</span>],
+        ] as [string, React.ReactNode][])
+      : []),
     ...(money
       ? ([
           ["حجم المعاملة", fmtUsd(tx.volumeUsd)],

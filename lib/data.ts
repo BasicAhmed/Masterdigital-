@@ -49,6 +49,9 @@ export interface Transaction extends Stamped {
   amount: number; // in `from`
   rate: number; // customer rate, board convention
   cost: number; // cost rate, board convention
+  /** Liquidity rates the profit was measured with: units per 1 USDT. */
+  fromUsd?: number;
+  toUsd?: number;
   fee: number;
   feeSide: FeeSide;
   expense: number;

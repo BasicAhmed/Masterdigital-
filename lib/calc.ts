@@ -141,3 +141,28 @@ export function usdTable(costs: Record<string, number>): Record<string, number> 
   }
   return usd;
 }
+
+/** Board-convention cost rate of a route from each currency's own price in
+ *  USDT (units per 1 USDT — his liquidity average, else the market). */
+export function costFromUsd(from: CurrencyCode, to: CurrencyCode, usd: Record<string, number>): number {
+  const p = findPair(from, to);
+  const q = p && usd[p.quote];
+  const b = p && usd[p.base];
+  return p && q && b ? +((q / b) * p.unit).toPrecision(6) : 0;
+}
+
+/** The liquidity rates (units per 1 USDT) a saved deal was priced with.
+ *  New deals store them; for older ones they are worked back out of the
+ *  saved cost + profit (only possible when there were no fees/expenses). */
+export function liquidityRatesOf(t: {
+  from: CurrencyCode; to: CurrencyCode; amount: number; payout: number; cost: number;
+  fee: number; feeSide: FeeSide; expense: number; profitUsd: number; fromUsd?: number; toUsd?: number;
+}): { from: number; to: number } | null {
+  if (t.fromUsd && t.toUsd) return { from: t.fromUsd, to: t.toUsd };
+  if (t.fee || t.expense || !t.profitUsd || !t.amount) return null;
+  const c = perUnit(t.from, t.to, t.cost);
+  const spread = t.amount * c - t.payout;
+  if (!c || !spread) return null;
+  const uTo = spread / t.profitUsd;
+  return uTo > 0 ? { from: uTo / c, to: uTo } : null;
+}
