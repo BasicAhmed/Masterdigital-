@@ -376,7 +376,7 @@ const BASE = "USDT";
 
 export interface CurrencyCost {
   currency: CurrencyCode;
-  avg: number; // units per 1 USDT — سعر السيولة: the rate of the latest deposit
+  avg: number; // units per 1 USDT — what this currency really cost
   units: number; // amount still counted in the average
   costUsd: number; // what those units cost
   deposits: number; // deposits with a rate that built it
@@ -393,37 +393,47 @@ export interface ExchangeLine {
   by?: string;
 }
 
-/** سعر السيولة of each currency = the rate of its LATEST deposit (the owner's
- *  rule: profit is measured at the last price he bought that currency at).
- *  Walks the manual movements in date order:
- *  - a deposit with a rate sets the currency's liquidity rate;
- *  - a withdrawal with a rate books gain/loss = amount ÷ rate − amount ÷ liquidity rate.
- *  Customer deals never change it. */
+/** Walks the manual movements in date order:
+ *  - a deposit with a rate adds its units and its cost (amount ÷ rate);
+ *  - a withdrawal takes units out at the average (so the average stays the
+ *    same) and, when it has a rate, books gain/loss = amount ÷ rate − amount ÷ average.
+ *  Customer deals don't change the average. If the counted units run out,
+ *  the last average is kept until the next deposit. */
 export function costBasis(movements: Movement[]): { costs: Partial<Record<CurrencyCode, CurrencyCost>>; exchange: ExchangeLine[] } {
   const ordered = [...movements].sort((a, b) => (a.date + a.createdAt).localeCompare(b.date + b.createdAt));
-  const pools = new Map<CurrencyCode, { units: number; last: number; deposits: number }>();
+  const pools = new Map<CurrencyCode, { units: number; costUsd: number; lastAvg: number; deposits: number }>();
   const exchange: ExchangeLine[] = [];
   for (const m of ordered) {
     if (m.currency === BASE) continue;
-    const p = pools.get(m.currency) ?? { units: 0, last: 0, deposits: 0 };
+    const p = pools.get(m.currency) ?? { units: 0, costUsd: 0, lastAvg: 0, deposits: 0 };
     pools.set(m.currency, p);
     const rate = typeof m.rate === "number" && m.rate > 0 ? m.rate : 0;
     if (m.kind === "deposit") {
-      p.units += m.amount;
       if (!rate) continue;
-      p.last = rate;
+      p.units += m.amount;
+      p.costUsd += m.amount / rate;
       p.deposits++;
+      p.lastAvg = p.units / p.costUsd;
     } else {
-      p.units = Math.max(0, p.units - m.amount);
-      if (rate && p.last) {
+      const avg = p.units > 0 ? p.units / p.costUsd : p.lastAvg;
+      if (p.units > 0) {
+        const out = Math.min(m.amount, p.units);
+        p.costUsd -= out / avg;
+        p.units -= out;
+        if (p.units <= 1e-9) {
+          p.units = 0;
+          p.costUsd = 0;
+        }
+      }
+      if (rate && avg) {
         exchange.push({
           id: m.id,
           date: m.date,
           currency: m.currency,
           amount: m.amount,
           rate,
-          avg: p.last,
-          gainUsd: m.amount / rate - m.amount / p.last,
+          avg,
+          gainUsd: m.amount / rate - m.amount / avg,
           by: m.createdByName,
         });
       }
@@ -431,7 +441,8 @@ export function costBasis(movements: Movement[]): { costs: Partial<Record<Curren
   }
   const costs: Partial<Record<CurrencyCode, CurrencyCost>> = {};
   pools.forEach((p, currency) => {
-    if (p.last > 0) costs[currency] = { currency, avg: p.last, units: p.units, costUsd: p.units / p.last, deposits: p.deposits };
+    const avg = p.units > 0 ? p.units / p.costUsd : p.lastAvg;
+    if (avg > 0) costs[currency] = { currency, avg, units: p.units, costUsd: p.costUsd, deposits: p.deposits };
   });
   return { costs, exchange: exchange.sort((a, b) => b.date.localeCompare(a.date)) };
 }

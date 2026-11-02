@@ -86,8 +86,8 @@ function MovementForm({ kind, currency, data, onClose }: { kind: MovementKind; c
               label={`السعر — كم ${cur} = 1 USDT`}
               hint={
                 kind === "deposit"
-                  ? `بكم اشتريت؟ ده بيصير سعر السيولة الجديد للربح${myAvg ? ` (الحالي ${formatSmart(myAvg)})` : ""}`
-                  : `بكم بعت؟ بيحسب ربح/خسارة الصرف${myAvg ? ` (سعر السيولة ${formatSmart(myAvg)})` : ""}`
+                  ? `بكم اشتريت؟ بيحدد تكلفتك الحقيقية${myAvg ? ` (متوسطك الآن ${formatSmart(myAvg)})` : ""}`
+                  : `بكم بعت؟ بيحسب ربح/خسارة الصرف${myAvg ? ` (متوسطك ${formatSmart(myAvg)})` : ""}`
               }
             >
               <NumInput value={rate} onChange={setRate} suffix={cur} placeholder={market ? formatSmart(market) : ""} className="text-base" />
@@ -101,12 +101,12 @@ function MovementForm({ kind, currency, data, onClose }: { kind: MovementKind; c
           </Field>
         </div>
         {kind === "deposit" && hasRate && !r && a > 0 && (
-          <p className="text-xs text-muted">بدون سعر، الإيداع بيزيد الرصيد بس وما بيغيّر سعر السيولة.</p>
+          <p className="text-xs text-muted">بدون سعر، الإيداع بيزيد الرصيد بس وما بيدخل في حساب التكلفة.</p>
         )}
         {gain !== null && (
           <p className={`rounded-xl p-2.5 text-xs font-semibold ${gain >= 0 ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-red-500/10 text-red-600"}`}>
             {gain >= 0 ? "ربح صرف" : "خسارة صرف"}: <span className="num" dir="ltr">{fmtUsd(Math.abs(gain))}</span> — بعت بـ{" "}
-            <span className="num" dir="ltr">{formatSmart(r)}</span> وسعر السيولة <span className="num" dir="ltr">{formatSmart(myAvg!)}</span>
+            <span className="num" dir="ltr">{formatSmart(r)}</span> ومتوسطك <span className="num" dir="ltr">{formatSmart(myAvg!)}</span>
           </p>
         )}
         {kind === "withdraw" && a > available && (
@@ -322,7 +322,7 @@ export default function LiquidityTab({ data }: { data: AdminData }) {
                 <p className="mt-1 text-[11px] text-subtle">
                   {data.costs[b.currency] ? (
                     <>
-                      سعر السيولة (آخر إيداع): <b className="num text-ink" dir="ltr">{formatSmart(data.costs[b.currency]!.avg)}</b> لكل USDT
+                      سعر السيولة (المتوسط): <b className="num text-ink" dir="ltr">{formatSmart(data.costs[b.currency]!.avg)}</b> لكل USDT
                     </>
                   ) : (
                     "التكلفة من سعر السوق — سجّل إيداع بسعر"
