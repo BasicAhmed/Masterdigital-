@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowDownToLine, ArrowUpFromLine, Check, Download, Eye, EyeOff, Plus, Settings2, Trash2, TriangleAlert, Wallet } from "lucide-react";
+import { ArrowDownToLine, ArrowLeftRight, ArrowUpFromLine, Check, Download, Eye, EyeOff, Plus, Settings2, Trash2, TriangleAlert, Wallet } from "lucide-react";
 import { CURRENCIES, CURRENCY_LIST, type CurrencyCode } from "@/lib/currencies";
 import { fmtMoney, fmtUsd, formatSmart, todayStr } from "@/lib/format";
 import { downloadCsv } from "@/lib/data";
@@ -132,6 +132,86 @@ function MovementForm({ kind, currency, data, onClose }: { kind: MovementKind; c
   );
 }
 
+/** Moves money between two accounts of the same currency (بنكك 1 → بنكك 2).
+ *  The currency's total and its liquidity rate stay the same. */
+function TransferForm({ currency, data, onClose }: { currency: CurrencyCode; data: AdminData; onClose: () => void }) {
+  const cats = accountsOf(currency);
+  const options = [...cats.map((a) => ({ id: a.id, label: a.label })), { id: "", label: "غير مصنّف" }];
+  const [fromAcc, setFromAcc] = useState(cats[0]?.id ?? "");
+  const [toAcc, setToAcc] = useState(cats[1]?.id ?? "");
+  const [amount, setAmount] = useState("");
+  const [date, setDate] = useState(todayStr());
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const a = parseFloat(amount) || 0;
+  const bal = data.balances.find((b) => b.currency === currency);
+  const balanceOf = (id: string) => bal?.accounts.find((x) => x.id === id)?.balance ?? 0;
+  const same = fromAcc === toAcc;
+  const over = a > balanceOf(fromAcc) + 1e-9;
+
+  const pick = (value: string, set: (v: string) => void, label: string) => (
+    <Field label={label} hint={`الرصيد: ${fmtMoney(balanceOf(value), currency)} ${currency}`}>
+      <select value={value} onChange={(e) => set(e.target.value)} className="field px-3 py-2.5 text-sm font-semibold">
+        {options.map((o) => (
+          <option key={o.id || "none"} value={o.id}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </Field>
+  );
+
+  return (
+    <Modal title={`تحويل بين حسابات ${currency}`} onClose={onClose}>
+      <div className="space-y-4">
+        <p className="text-xs leading-relaxed text-muted">
+          بينقل المبلغ من حساب لحساب في نفس العملة. إجمالي {currency} وسعر السيولة ما بيتغيّروا.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {pick(fromAcc, setFromAcc, "من حساب")}
+          {pick(toAcc, setToAcc, "إلى حساب")}
+          <Field label="المبلغ">
+            <NumInput value={amount} onChange={setAmount} suffix={currency} decimals={2} placeholder="0" className="text-base" />
+          </Field>
+          <Field label="التاريخ">
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} dir="ltr" className="field px-3 py-2.5 font-mono text-sm" />
+          </Field>
+        </div>
+        <Field label="البيان">
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="اختياري" className="field px-3 py-2.5 text-sm" />
+        </Field>
+        {same && <p className="text-xs font-semibold text-red-500">اختار حسابين مختلفين.</p>}
+        {!same && over && <p className="text-xs font-semibold text-amber-600">المبلغ أكبر من رصيد الحساب — حيبقى بالسالب.</p>}
+        <button
+          disabled={!a || same || saving}
+          onClick={async () => {
+            setSaving(true);
+            try {
+              await data.upsertMovement({
+                id: newId(),
+                date,
+                currency,
+                kind: "transfer",
+                amount: a,
+                note: note.trim(),
+                account: validAccount(currency, fromAcc),
+                toAccount: validAccount(currency, toAcc),
+                createdAt: new Date().toISOString(),
+              });
+              onClose();
+            } catch {
+              setSaving(false);
+            }
+          }}
+          className="btn-primary w-full py-3.5 text-sm"
+        >
+          <ArrowLeftRight size={16} /> {saving ? "جارٍ الحفظ…" : "تحويل"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 /** Add, rename or hide the accounts of each currency. An account that has
  *  records can only be hidden (its name stays on old records); an unused
  *  one can be deleted. */
@@ -242,6 +322,7 @@ export default function LiquidityTab({ data }: { data: AdminData }) {
   const [filter, setFilter] = useState<CurrencyCode | "ALL">("ALL");
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [managing, setManaging] = useState(false);
+  const [transfer, setTransfer] = useState<CurrencyCode | null>(null);
 
   const totalUsd = balances.reduce((s, b) => s + b.usd, 0);
   const negative = balances.filter((b) => b.balance < -1e-9);
@@ -356,6 +437,11 @@ export default function LiquidityTab({ data }: { data: AdminData }) {
                   سحب
                 </button>
               </div>
+              {accountsOf(b.currency).length > 0 && (
+                <button onClick={() => setTransfer(b.currency)} className="btn-ghost mt-2 w-full py-2 text-xs">
+                  <ArrowLeftRight size={13} /> تحويل بين الحسابات
+                </button>
+              )}
             </div>
           );
         })}
@@ -441,6 +527,7 @@ export default function LiquidityTab({ data }: { data: AdminData }) {
       </Panel>
 
       {managing && <AccountsManager data={data} onClose={() => setManaging(false)} />}
+      {transfer && <TransferForm currency={transfer} data={data} onClose={() => setTransfer(null)} />}
       {form && <MovementForm kind={form.kind} currency={form.currency} data={data} onClose={() => setForm(null)} />}
     </div>
   );

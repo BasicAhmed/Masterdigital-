@@ -8,6 +8,8 @@ import { fmtMoney, fmtUsd, todayStr } from "@/lib/format";
 import { downloadCsv } from "@/lib/data";
 import {
   KIND_LABEL,
+  accountsOf,
+  validAccount,
   blankObligation,
   isOverdue,
   isSettled,
@@ -25,6 +27,24 @@ import { Empty, Field, Modal, NumInput, Panel, Stat } from "./ui";
 
 const num = (s: string) => parseFloat(s) || 0;
 
+/** Which liquidity account of this currency the money moved through. */
+function AccountPick({ currency, value, onChange, label }: { currency: CurrencyCode; value: string; onChange: (v: string) => void; label: string }) {
+  const list = accountsOf(currency);
+  if (!list.length) return null;
+  return (
+    <Field label={label}>
+      <select value={validAccount(currency, value)} onChange={(e) => onChange(e.target.value)} className="field px-3 py-2.5 text-sm font-semibold">
+        {list.map((a) => (
+          <option key={a.id} value={a.id}>
+            {a.label}
+          </option>
+        ))}
+        <option value="">غير مصنّف</option>
+      </select>
+    </Field>
+  );
+}
+
 function KindChip({ kind }: { kind: ObligationKind }) {
   return (
     <span className={`chip ${kind === "receivable" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" : "bg-red-500/15 text-red-600 dark:text-red-400"}`}>
@@ -35,7 +55,7 @@ function KindChip({ kind }: { kind: ObligationKind }) {
 
 export function ObligationForm({ initial, data, onClose }: { initial: Obligation; data: AdminData; onClose: () => void }) {
   const isNew = !data.obligations.some((o) => o.id === initial.id);
-  const [o, setO] = useState<Obligation>({ ...initial, date: initial.date || todayStr() });
+  const [o, setO] = useState<Obligation>({ ...initial, date: initial.date || todayStr(), account: initial.account ?? accountsOf(initial.currency)[0]?.id ?? "" });
   const [amount, setAmount] = useState(initial.amount ? String(initial.amount) : "");
   const [saving, setSaving] = useState(false);
   const paid = paidOf(o);
@@ -87,7 +107,7 @@ export function ObligationForm({ initial, data, onClose }: { initial: Obligation
 
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="العملة">
-            <select value={o.currency} onChange={(e) => setO({ ...o, currency: e.target.value as CurrencyCode })} className="field px-3 py-2.5 text-sm font-semibold">
+            <select value={o.currency} onChange={(e) => { const c = e.target.value as CurrencyCode; setO({ ...o, currency: c, account: accountsOf(c)[0]?.id ?? "" }); }} className="field px-3 py-2.5 text-sm font-semibold">
               {CURRENCY_LIST.map((c) => (
                 <option key={c.code} value={c.code}>
                   {c.flag} {c.code} — {c.name}
@@ -117,6 +137,14 @@ export function ObligationForm({ initial, data, onClose }: { initial: Obligation
             </span>
           </span>
         </label>
+        {o.cashMoved && (
+          <AccountPick
+            currency={o.currency}
+            value={o.account ?? ""}
+            onChange={(v) => setO({ ...o, account: v })}
+            label={o.kind === "receivable" ? "طلع من حساب" : "دخل في حساب"}
+          />
+        )}
 
         <Field label="ملاحظات">
           <textarea value={o.note} onChange={(e) => setO({ ...o, note: e.target.value })} rows={2} className="field px-3 py-2.5 text-sm" />
@@ -127,7 +155,7 @@ export function ObligationForm({ initial, data, onClose }: { initial: Obligation
           onClick={async () => {
             setSaving(true);
             try {
-              await data.upsertObligation({ ...o, party: o.party.trim(), note: o.note.trim(), amount: num(amount) });
+              await data.upsertObligation({ ...o, party: o.party.trim(), note: o.note.trim(), amount: num(amount), account: validAccount(o.currency, o.account) });
               onClose();
             } catch {
               setSaving(false);
@@ -147,6 +175,7 @@ function PaymentForm({ o, data, onClose }: { o: Obligation; data: AdminData; onC
   const [amount, setAmount] = useState(String(remaining));
   const [date, setDate] = useState(todayStr());
   const [note, setNote] = useState("");
+  const [account, setAccount] = useState(o.account ?? accountsOf(o.currency)[0]?.id ?? "");
   const [saving, setSaving] = useState(false);
   const a = num(amount);
   const over = a > remaining + 1e-9;
@@ -171,6 +200,7 @@ function PaymentForm({ o, data, onClose }: { o: Obligation; data: AdminData; onC
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} dir="ltr" className="field px-3 py-2.5 font-mono text-sm" />
           </Field>
         </div>
+        <AccountPick currency={o.currency} value={account} onChange={setAccount} label={o.kind === "receivable" ? "دخل في حساب" : "طلع من حساب"} />
         {over && <p className="text-xs font-semibold text-red-500">المبلغ أكبر من المتبقي.</p>}
         <Field label="ملاحظة">
           <input value={note} onChange={(e) => setNote(e.target.value)} className="field px-3 py-2.5 text-sm" />
@@ -180,7 +210,7 @@ function PaymentForm({ o, data, onClose }: { o: Obligation; data: AdminData; onC
           onClick={async () => {
             setSaving(true);
             try {
-              await data.upsertObligation({ ...o, payments: [...o.payments, { id: newId(), date, amount: a, note: note.trim() }] });
+              await data.upsertObligation({ ...o, payments: [...o.payments, { id: newId(), date, amount: a, note: note.trim(), account: validAccount(o.currency, account) }] });
               onClose();
             } catch {
               setSaving(false);

@@ -19,6 +19,8 @@ export interface ObligationPayment {
   date: string; // YYYY-MM-DD
   amount: number;
   note: string;
+  /** Liquidity account the money came into / went out of. */
+  account?: string;
 }
 
 export interface Obligation extends Stamped {
@@ -36,6 +38,8 @@ export interface Obligation extends Stamped {
    *  recorded (a loan given or received). false for credit that involved no
    *  cash yet. */
   cashMoved: boolean;
+  /** Liquidity account the cash left / entered when cashMoved. */
+  account?: string;
   payments: ObligationPayment[];
   createdAt: string;
 }
@@ -205,7 +209,7 @@ export const validAccount = (currency: CurrencyCode, id: string | undefined): st
 /** deposit / withdraw move capital in or out; expense is a running cost of
  *  the business (rent, salaries…) — it leaves the account it was paid from
  *  and is subtracted from profit. */
-export type MovementKind = "deposit" | "withdraw" | "expense";
+export type MovementKind = "deposit" | "withdraw" | "expense" | "transfer";
 
 export const EXPENSE_CATEGORIES = ["إيجار", "رواتب", "مواصلات", "اتصالات وإنترنت", "رسوم بنكية", "عمولات وكلاء", "ضيافة", "أخرى"];
 
@@ -218,8 +222,11 @@ export interface Movement extends Stamped {
   kind: MovementKind;
   amount: number;
   note: string;
-  /** Category of that currency the cash went into / came out of. */
+  /** Category of that currency the cash went into / came out of
+   *  (for a transfer: the account it left). */
   account?: string;
+  /** Transfers only: the account it went into (same currency). */
+  toAccount?: string;
   /** The rate of this deposit / withdrawal: units of the currency per
    *  1 USDT (e.g. 8,800 SDG). Deposits with a rate set the average cost;
    *  withdrawals with a rate show the exchange gain or loss. */
@@ -234,6 +241,8 @@ export const saveMovement = (m: Movement) => saveDoc("movements", m);
 export const deleteMovement = (id: string) => removeDoc("movements", id);
 
 export interface LiquidityLine {
+  /** true for a move between two accounts of the same currency */
+  internal?: boolean;
   date: string;
   currency: CurrencyCode;
   delta: number;
@@ -257,6 +266,14 @@ export interface LiquidityLine {
 export function liquidityLedger(txs: Transaction[], obligations: Obligation[], movements: Movement[]): LiquidityLine[] {
   const out: LiquidityLine[] = [];
   for (const m of movements) {
+    if (m.kind === "transfer") {
+      const fromAcc = validAccount(m.currency, m.account);
+      const toAcc = validAccount(m.currency, m.toAccount);
+      const label = `تحويل من ${accountLabel(m.currency, fromAcc)} إلى ${accountLabel(m.currency, toAcc)}${m.note ? ` — ${m.note}` : ""}`;
+      out.push({ date: m.date, currency: m.currency, delta: -m.amount, source: "manual", label, refId: m.id, account: fromAcc, by: m.createdByName, internal: true });
+      out.push({ date: m.date, currency: m.currency, delta: m.amount, source: "manual", label, refId: m.id, account: toAcc, by: m.createdByName, internal: true });
+      continue;
+    }
     out.push({
       date: m.date,
       currency: m.currency,
@@ -302,7 +319,7 @@ export function liquidityLedger(txs: Transaction[], obligations: Obligation[], m
         source: "obligation",
         label: `${o.kind === "receivable" ? "سلفة إلى" : "استلام من"} ${o.party}`,
         refId: o.id,
-        account: UNASSIGNED,
+        account: validAccount(o.currency, o.account),
         by: o.createdByName,
       });
     }
@@ -314,7 +331,7 @@ export function liquidityLedger(txs: Transaction[], obligations: Obligation[], m
         source: "obligation",
         label: `${o.kind === "receivable" ? "سداد من" : "سداد إلى"} ${o.party}`,
         refId: o.id,
-        account: UNASSIGNED,
+        account: validAccount(o.currency, p.account),
         by: o.createdByName,
       });
     }
@@ -362,8 +379,8 @@ export function balances(lines: LiquidityLine[], usd: Record<string, number>): B
       currency: c.code,
       balance,
       usd: toUsd(balance, c.code, usd),
-      inflow: mine.filter((l) => l.delta > 0).reduce((s, l) => s + l.delta, 0),
-      outflow: mine.filter((l) => l.delta < 0).reduce((s, l) => s - l.delta, 0),
+      inflow: mine.filter((l) => l.delta > 0 && !l.internal).reduce((s, l) => s + l.delta, 0),
+      outflow: mine.filter((l) => l.delta < 0 && !l.internal).reduce((s, l) => s - l.delta, 0),
       accounts,
     };
   });
@@ -404,7 +421,7 @@ export function costBasis(movements: Movement[]): { costs: Partial<Record<Curren
   const pools = new Map<CurrencyCode, { units: number; costUsd: number; lastAvg: number; deposits: number }>();
   const exchange: ExchangeLine[] = [];
   for (const m of ordered) {
-    if (m.currency === BASE) continue;
+    if (m.currency === BASE || m.kind === "transfer") continue; // moving between own accounts changes nothing
     const p = pools.get(m.currency) ?? { units: 0, costUsd: 0, lastAvg: 0, deposits: 0 };
     pools.set(m.currency, p);
     const rate = typeof m.rate === "number" && m.rate > 0 ? m.rate : 0;
