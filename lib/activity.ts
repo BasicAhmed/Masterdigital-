@@ -94,8 +94,14 @@ export interface Stamped {
 }
 
 /** New record → created by me. Existing → keeps its creator, updated by me. */
-export function stamp<T extends Stamped>(rec: T, isNew: boolean): T {
-  if (!actor) return rec;
+export function stamp<T extends Stamped>(rec: T, isNew: boolean, before?: Stamped): T {
+  // Forms rebuild the record from their fields, so the creator would be lost
+  // on every edit — always carry it over from the saved version.
+  const kept: Stamped = before
+    ? { createdBy: rec.createdBy ?? before.createdBy, createdByName: rec.createdByName ?? before.createdByName }
+    : {};
+  for (const k of Object.keys(kept) as (keyof Stamped)[]) if (kept[k] === undefined) delete kept[k];
+  if (!actor) return { ...rec, ...kept };
   if (isNew) return { ...rec, createdBy: actor.uid, createdByName: actor.name };
-  return { ...rec, updatedBy: actor.uid, updatedByName: actor.name, updatedAt: new Date().toISOString() };
+  return { ...rec, ...kept, updatedBy: actor.uid, updatedByName: actor.name, updatedAt: new Date().toISOString() };
 }

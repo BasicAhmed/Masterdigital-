@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeftRight,
   BellRing,
@@ -212,6 +212,23 @@ export default function AdminApp({ me, onSignOut }: { me: Me; onSignOut?: () => 
   const usd = useMemo(() => usdRatesFromRoutes(routes), [routes]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [txs, setTxs] = useState<Transaction[]>([]);
+
+  // Repair: edits used to wipe «بواسطة». Put the creator back from the
+  // activity log (who logged «معاملة جديدة» for it), once, quietly.
+  const repaired = useRef(false);
+  useEffect(() => {
+    if (repaired.current || !activity.length || !txs.length || !canDo(me, "tx_edit")) return;
+    const creator = new Map<string, Activity>();
+    for (const a of activity) if (a.kind === "transaction" && a.action === "create" && a.refId) creator.set(a.refId, a);
+    const fixes = txs
+      .filter((t) => !t.createdBy && creator.has(t.id))
+      .map((t) => ({ ...t, createdBy: creator.get(t.id)!.uid, createdByName: creator.get(t.id)!.name }));
+    repaired.current = true;
+    if (!fixes.length) return;
+    Promise.all(fixes.map((t) => saveTransaction(t)))
+      .then(() => setTxs((prev) => prev.map((t) => fixes.find((f) => f.id === t.id) ?? t)))
+      .catch(() => undefined);
+  }, [activity, txs, me]);
   const [obligations, setObligations] = useState<Obligation[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
   const [accounts, setAccounts] = useState<AccountMap>(DEFAULT_ACCOUNTS);
@@ -330,7 +347,7 @@ export default function AdminApp({ me, onSignOut }: { me: Me; onSignOut?: () => 
       upsertCustomer: (input) =>
         guard(async () => {
           const before = customers.find((x) => x.id === input.id);
-          const c = stamp(input, !before);
+          const c = stamp(input, !before, before);
           await saveCustomer(c);
           logActivity({ kind: "customer", action: before ? "update" : "create", refId: c.id, summary: `${before ? "تعديل" : "إضافة"} العميل ${c.name}${c.code != null ? ` #${c.code}` : ""}` });
           setCustomers((prev) => (prev.some((x) => x.id === c.id) ? prev.map((x) => (x.id === c.id ? c : x)) : [...prev, c]));
@@ -341,7 +358,7 @@ export default function AdminApp({ me, onSignOut }: { me: Me; onSignOut?: () => 
         }),
       importCustomers: (list, onProgress) =>
         guard(async () => {
-          const queue = list.map((c) => stamp(c, !customers.some((x) => x.id === c.id)));
+          const queue = list.map((c) => { const prev = customers.find((x) => x.id === c.id); return stamp(c, !prev, prev); });
           const savedList: Customer[] = [];
           const worker = async () => {
             while (queue.length) {
@@ -369,7 +386,7 @@ export default function AdminApp({ me, onSignOut }: { me: Me; onSignOut?: () => 
       upsertTx: (input) =>
         guard(async () => {
           const before = txs.find((x) => x.id === input.id);
-          const t = stamp(input, !before);
+          const t = stamp(input, !before, before);
           await saveTransaction(t);
           const what = `${t.ref}: ${fmtMoney(t.amount, t.from)} ${t.from} → ${t.to} — ${t.customerName}`;
           logActivity({
@@ -394,7 +411,7 @@ export default function AdminApp({ me, onSignOut }: { me: Me; onSignOut?: () => 
       upsertObligation: (input) =>
         guard(async () => {
           const before = obligations.find((x) => x.id === input.id);
-          const o = stamp(input, !before);
+          const o = stamp(input, !before, before);
           await saveObligation(o);
           const paid = before && o.payments.length > before.payments.length ? o.payments[o.payments.length - 1] : null;
           logActivity({
@@ -417,7 +434,7 @@ export default function AdminApp({ me, onSignOut }: { me: Me; onSignOut?: () => 
       upsertMovement: (input) =>
         guard(async () => {
           const before = movements.find((x) => x.id === input.id);
-          const m = stamp(input, !before);
+          const m = stamp(input, !before, before);
           await saveMovement(m);
           logActivity({ kind: "movement", action: before ? "update" : "create", refId: m.id, summary: m.kind === "expense"
             ? `مصروف ${m.category ?? ""}: ${fmtMoney(m.amount, m.currency)} ${m.currency}${m.note ? ` — ${m.note}` : ""}`
