@@ -3,9 +3,9 @@
 import { useMemo, useState } from "react";
 import { Check, Copy, Download, Pencil, Plus, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { CURRENCY_LIST, ROUTE_KEYS, routeKey, findPair } from "@/lib/currencies";
-import { fmt, fmtMoney, fmtPct, fmtRate, fmtUsd } from "@/lib/format";
+import { fmt, fmtMoney, fmtPct, fmtRate, fmtUsd, todayStr } from "@/lib/format";
 import { STATUS_LABEL, type Transaction, type TxStatus } from "@/lib/data";
-import { totals } from "@/lib/stats";
+import { periodRange, totals, type PeriodKey } from "@/lib/stats";
 import { liquidityRatesOf } from "@/lib/calc";
 import type { AdminData } from "./AdminApp";
 import { Empty, Modal, RouteTag, StatusChip } from "./ui";
@@ -243,6 +243,29 @@ export function TxTable({ txs, onOpen, hideCustomer, money = true }: { txs: Tran
   );
 }
 
+type DateChip = PeriodKey | "yesterday";
+const DATE_CHIPS: [DateChip, string][] = [
+  ["all", "الكل"],
+  ["today", "اليوم"],
+  ["yesterday", "أمس"],
+  ["7d", "آخر 7 أيام"],
+  ["month", "هذا الشهر"],
+  ["lastMonth", "الشهر الماضي"],
+  ["year", "هذه السنة"],
+  ["custom", "فترة محددة"],
+];
+
+function chipRange(k: DateChip): { from: string; to: string } {
+  if (k === "all" || k === "custom") return { from: "", to: "" };
+  if (k === "yesterday") {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    const y = todayStr(d);
+    return { from: y, to: y };
+  }
+  return periodRange(k);
+}
+
 export default function TransactionsTab({ data }: { data: AdminData }) {
   const { txs, customers } = data;
   const [q, setQ] = useState("");
@@ -253,6 +276,14 @@ export default function TransactionsTab({ data }: { data: AdminData }) {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [showFilters, setShowFilters] = useState(false);
+  const [period, setPeriod] = useState<DateChip>("all");
+  const pickPeriod = (k: DateChip) => {
+    setPeriod(k);
+    if (k === "custom") return; // keep whatever dates are typed below
+    const r = chipRange(k);
+    setDateFrom(r.from);
+    setDateTo(r.to);
+  };
   const [openId, setOpenId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
@@ -270,9 +301,9 @@ export default function TransactionsTab({ data }: { data: AdminData }) {
   }, [txs, q, customerId, route, currency, status, dateFrom, dateTo]);
 
   const sum = totals(filtered);
-  const activeFilters = [customerId, route, currency, status, dateFrom, dateTo].filter(Boolean).length;
+  const activeFilters = [customerId, route, currency, status].filter(Boolean).length;
   const clear = () => {
-    setQ(""); setCustomerId(""); setRoute(""); setCurrency(""); setStatus(""); setDateFrom(""); setDateTo("");
+    setQ(""); setCustomerId(""); setRoute(""); setCurrency(""); setStatus(""); setDateFrom(""); setDateTo(""); setPeriod("all");
   };
   const open = txs.find((t) => t.id === openId);
   const sel = "field px-3 py-2.5 text-sm";
@@ -301,8 +332,34 @@ export default function TransactionsTab({ data }: { data: AdminData }) {
         )}
       </div>
 
+      {/* quick date filter */}
+      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1" role="group" aria-label="الفترة">
+        {DATE_CHIPS.map(([k, label]) => (
+          <button
+            key={k}
+            onClick={() => pickPeriod(k)}
+            aria-pressed={period === k}
+            className={`shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+              period === k ? "border-brand-navy bg-brand-navy text-white" : "border-border bg-surface text-muted hover:text-ink"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {period === "custom" && (
+        <div className="grid grid-cols-2 gap-3 sm:max-w-md">
+          <label><span className="label">من تاريخ</span>
+            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} dir="ltr" className={`${sel} font-mono`} />
+          </label>
+          <label><span className="label">إلى تاريخ</span>
+            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} dir="ltr" className={`${sel} font-mono`} />
+          </label>
+        </div>
+      )}
+
       {showFilters && (
-        <div className="card-sm grid gap-3 p-4 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="card-sm grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
           <label><span className="label">العميل</span>
             <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} className={sel}>
               <option value="">الكل</option>
@@ -327,12 +384,6 @@ export default function TransactionsTab({ data }: { data: AdminData }) {
               {(Object.keys(STATUS_LABEL) as TxStatus[]).map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
             </select>
           </label>
-          <label><span className="label">من تاريخ</span>
-            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} dir="ltr" className={`${sel} font-mono`} />
-          </label>
-          <label><span className="label">إلى تاريخ</span>
-            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} dir="ltr" className={`${sel} font-mono`} />
-          </label>
         </div>
       )}
 
@@ -342,7 +393,7 @@ export default function TransactionsTab({ data }: { data: AdminData }) {
         {data.can("finance") && <span>الإيراد: <b className="num text-ink" dir="ltr">{fmtUsd(sum.revenue)}</b></span>}
         {data.can("finance") && <span>الربح: <b className="num text-ink" dir="ltr">{fmtUsd(sum.profit)}</b></span>}
         <span className="text-subtle">(الأرقام للمعاملات المكتملة فقط)</span>
-        {(activeFilters > 0 || q) && (
+        {(activeFilters > 0 || q || dateFrom || dateTo) && (
           <button onClick={clear} className="inline-flex items-center gap-1 font-semibold text-primary">
             <X size={12} /> مسح الفلاتر
           </button>
