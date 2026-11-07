@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowDownToLine, ArrowLeftRight, ArrowUpFromLine, Check, Download, Eye, EyeOff, Plus, Settings2, Trash2, TriangleAlert, Wallet } from "lucide-react";
+import { ArrowDownToLine, ArrowLeftRight, ArrowUpFromLine, Check, RotateCcw, Download, Eye, EyeOff, Plus, Settings2, Trash2, TriangleAlert, Wallet } from "lucide-react";
 import { CURRENCIES, CURRENCY_LIST, type CurrencyCode } from "@/lib/currencies";
 import { fmtMoney, fmtUsd, formatSmart, todayStr } from "@/lib/format";
 import { downloadCsv } from "@/lib/data";
@@ -127,6 +127,101 @@ function MovementForm({ kind, currency, data, onClose }: { kind: MovementKind; c
         >
           <Check size={16} /> {saving ? "جارٍ الحفظ…" : "حفظ"}
         </button>
+      </div>
+    </Modal>
+  );
+}
+
+/** Restarts the liquidity rate of one currency: he prices what he holds now,
+ *  and from here on only that + new deposits make the average. Old deposits
+ *  (money already spent) stop pulling the rate. Balances don't change. */
+function RebaseForm({ currency, data, onClose }: { currency: CurrencyCode; data: AdminData; onClose: () => void }) {
+  const bal = data.balances.find((b) => b.currency === currency)?.balance ?? 0;
+  const cost = data.costs[currency];
+  const market = data.usd[currency];
+  const [rate, setRate] = useState(cost ? String(+cost.avg.toFixed(2)) : market ? String(+market.toFixed(2)) : "");
+  const [saving, setSaving] = useState(false);
+  const r = parseFloat(rate) || 0;
+  const held = Math.max(0, bal);
+
+  return (
+    <Modal title={`إعادة ضبط سعر السيولة — ${currency}`} onClose={onClose}>
+      <div className="space-y-4">
+        <div className="rounded-xl border border-border bg-surface p-3 text-xs leading-relaxed text-muted">
+          الرصيد الحالي <b className="num text-ink" dir="ltr">{fmtMoney(held, currency)} {currency}</b> حيتسعّر بالسعر اللي تكتبه تحت.
+          بعد كده المتوسط يبدأ من جديد: الرصيد ده + الإيداعات الجاية بس. الإيداعات القديمة ما بتدخل في الحساب تاني، والأرصدة ما بتتغيّر.
+        </div>
+
+        <Field label={`بكم تسعّر الـ ${fmtMoney(held, currency)} ${currency} اللي عندك الآن؟`} hint={`${currency} لكل 1 USDT`}>
+          <NumInput value={rate} onChange={setRate} suffix={currency} decimals={4} placeholder="0" className="text-base" />
+        </Field>
+
+        <div className="flex flex-wrap gap-2 text-[11px]">
+          {cost && (
+            <button type="button" onClick={() => setRate(String(+cost.avg.toFixed(2)))} className="rounded-full border border-border px-3 py-1 text-muted hover:text-ink">
+              المتوسط الحالي <span className="num" dir="ltr">{formatSmart(cost.avg)}</span>
+            </button>
+          )}
+          {market ? (
+            <button type="button" onClick={() => setRate(String(+market.toFixed(2)))} className="rounded-full border border-border px-3 py-1 text-muted hover:text-ink">
+              سعر السوق <span className="num" dir="ltr">{formatSmart(market)}</span>
+            </button>
+          ) : null}
+        </div>
+
+        {r > 0 && held > 0 && (
+          <p className="text-xs text-muted">
+            قيمة الرصيد بعد الضبط: <b className="num text-ink" dir="ltr">{fmtUsd(held / r)}</b>
+          </p>
+        )}
+
+        <button
+          disabled={!r || saving}
+          onClick={async () => {
+            setSaving(true);
+            try {
+              await data.upsertMovement({
+                id: newId(),
+                date: todayStr(),
+                currency,
+                kind: "rebase",
+                amount: held,
+                rate: r,
+                note: "",
+                createdAt: new Date().toISOString(),
+              });
+              onClose();
+            } catch {
+              setSaving(false);
+            }
+          }}
+          className="btn-primary w-full py-3.5 text-sm"
+        >
+          <RotateCcw size={16} /> {saving ? "جارٍ الحفظ…" : "ابدأ الحساب من جديد"}
+        </button>
+
+        {cost?.rebase && (
+          <div className="flex items-center justify-between gap-2 border-t border-border/60 pt-3 text-[11px] text-subtle">
+            <span>
+              آخر ضبط: <span className="num" dir="ltr">{cost.rebase.date}</span> بسعر <span className="num" dir="ltr">{formatSmart(cost.rebase.rate)}</span>
+            </span>
+            <button
+              type="button"
+              onClick={async () => {
+                setSaving(true);
+                try {
+                  await data.removeMovement(cost.rebase!.id);
+                  onClose();
+                } catch {
+                  setSaving(false);
+                }
+              }}
+              className="font-semibold text-red-500 hover:underline"
+            >
+              تراجع عن آخر ضبط
+            </button>
+          </div>
+        )}
       </div>
     </Modal>
   );
@@ -323,6 +418,7 @@ export default function LiquidityTab({ data }: { data: AdminData }) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [managing, setManaging] = useState(false);
   const [transfer, setTransfer] = useState<CurrencyCode | null>(null);
+  const [rebase, setRebase] = useState<CurrencyCode | null>(null);
 
   const totalUsd = balances.reduce((s, b) => s + b.usd, 0);
   const negative = balances.filter((b) => b.balance < -1e-9);
@@ -404,6 +500,11 @@ export default function LiquidityTab({ data }: { data: AdminData }) {
                   {data.costs[b.currency] ? (
                     <>
                       سعر السيولة (المتوسط): <b className="num text-ink" dir="ltr">{formatSmart(data.costs[b.currency]!.avg)}</b> لكل USDT
+                      {data.costs[b.currency]!.rebase && (
+                        <span className="block text-subtle">
+                          محسوب من ضبط <span className="num" dir="ltr">{data.costs[b.currency]!.rebase!.date}</span>
+                        </span>
+                      )}
                     </>
                   ) : (
                     "التكلفة من سعر السوق — سجّل إيداع بسعر"
@@ -440,6 +541,11 @@ export default function LiquidityTab({ data }: { data: AdminData }) {
               {accountsOf(b.currency).length > 0 && (
                 <button onClick={() => setTransfer(b.currency)} className="btn-ghost mt-2 w-full py-2 text-xs">
                   <ArrowLeftRight size={13} /> تحويل بين الحسابات
+                </button>
+              )}
+              {b.currency !== "USDT" && data.can("finance") && (
+                <button onClick={() => setRebase(b.currency)} className="mt-2 w-full py-1.5 text-[11px] font-semibold text-subtle hover:text-primary">
+                  <RotateCcw size={12} className="inline" /> إعادة ضبط سعر السيولة
                 </button>
               )}
             </div>
@@ -527,6 +633,7 @@ export default function LiquidityTab({ data }: { data: AdminData }) {
       </Panel>
 
       {managing && <AccountsManager data={data} onClose={() => setManaging(false)} />}
+      {rebase && <RebaseForm currency={rebase} data={data} onClose={() => setRebase(null)} />}
       {transfer && <TransferForm currency={transfer} data={data} onClose={() => setTransfer(null)} />}
       {form && <MovementForm kind={form.kind} currency={form.currency} data={data} onClose={() => setForm(null)} />}
     </div>

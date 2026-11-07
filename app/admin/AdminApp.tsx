@@ -438,6 +438,8 @@ export default function AdminApp({ me, onSignOut }: { me: Me; onSignOut?: () => 
           await saveMovement(m);
           logActivity({ kind: "movement", action: before ? "update" : "create", refId: m.id, summary: m.kind === "expense"
             ? `مصروف ${m.category ?? ""}: ${fmtMoney(m.amount, m.currency)} ${m.currency}${m.note ? ` — ${m.note}` : ""}`
+            : m.kind === "rebase"
+            ? `إعادة ضبط سعر السيولة ${m.currency}: الرصيد ${fmtMoney(m.amount, m.currency)} بسعر ${m.rate}`
             : m.kind === "transfer"
             ? `تحويل ${fmtMoney(m.amount, m.currency)} ${m.currency} بين الحسابات`
             : `${m.kind === "deposit" ? "إيداع" : "سحب"} ${fmtMoney(m.amount, m.currency)} ${m.currency}${m.rate ? ` بسعر ${m.rate}` : ""}${m.note ? ` — ${m.note}` : ""}` });

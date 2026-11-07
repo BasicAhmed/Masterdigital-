@@ -209,7 +209,10 @@ export const validAccount = (currency: CurrencyCode, id: string | undefined): st
 /** deposit / withdraw move capital in or out; expense is a running cost of
  *  the business (rent, salaries…) — it leaves the account it was paid from
  *  and is subtracted from profit. */
-export type MovementKind = "deposit" | "withdraw" | "expense" | "transfer";
+/** "rebase": the owner restarted the liquidity rate — the balance at that
+ *  moment (amount) is priced at `rate`, and earlier deposits stop counting.
+ *  It never changes any balance. */
+export type MovementKind = "deposit" | "withdraw" | "expense" | "transfer" | "rebase";
 
 export const EXPENSE_CATEGORIES = ["إيجار", "رواتب", "مواصلات", "اتصالات وإنترنت", "رسوم بنكية", "عمولات وكلاء", "ضيافة", "أخرى"];
 
@@ -266,6 +269,7 @@ export interface LiquidityLine {
 export function liquidityLedger(txs: Transaction[], obligations: Obligation[], movements: Movement[]): LiquidityLine[] {
   const out: LiquidityLine[] = [];
   for (const m of movements) {
+    if (m.kind === "rebase") continue; // a pricing note, not money
     if (m.kind === "transfer") {
       const fromAcc = validAccount(m.currency, m.account);
       const toAcc = validAccount(m.currency, m.toAccount);
@@ -397,6 +401,8 @@ export interface CurrencyCost {
   units: number; // amount still counted in the average
   costUsd: number; // what those units cost
   deposits: number; // deposits with a rate that built it
+  /** Set when the owner restarted the rate: the date and the rate he chose. */
+  rebase?: { id: string; date: string; rate: number; amount: number };
 }
 
 export interface ExchangeLine {
@@ -418,14 +424,24 @@ export interface ExchangeLine {
  *  moment: amount ÷ rate − amount ÷ average. */
 export function costBasis(movements: Movement[]): { costs: Partial<Record<CurrencyCode, CurrencyCost>>; exchange: ExchangeLine[] } {
   const ordered = [...movements].sort((a, b) => (a.date + a.createdAt).localeCompare(b.date + b.createdAt));
-  const pools = new Map<CurrencyCode, { dep: number; weighted: number; units: number; deposits: number }>();
+  const pools = new Map<CurrencyCode, { dep: number; weighted: number; units: number; deposits: number; rebase?: CurrencyCost["rebase"] }>();
   const exchange: ExchangeLine[] = [];
   for (const m of ordered) {
     if (m.currency === BASE || m.kind === "transfer") continue; // moving between own accounts changes nothing
     const p = pools.get(m.currency) ?? { dep: 0, weighted: 0, units: 0, deposits: 0 };
     pools.set(m.currency, p);
-    p.units += m.kind === "deposit" ? m.amount : -m.amount;
     const rate = typeof m.rate === "number" && m.rate > 0 ? m.rate : 0;
+    if (m.kind === "rebase") {
+      // start over: what's in hand now, at the price he chose
+      if (!rate) continue;
+      p.dep = Math.max(0, m.amount);
+      p.weighted = p.dep * rate;
+      p.deposits = 0;
+      p.rebase = { id: m.id, date: m.date, rate, amount: m.amount };
+      if (!p.dep) { p.dep = 1e-9; p.weighted = 1e-9 * rate; } // empty balance: keep the chosen rate
+      continue;
+    }
+    p.units += m.kind === "deposit" ? m.amount : -m.amount;
     if (!rate) continue;
     if (m.kind === "deposit") {
       p.dep += m.amount;
@@ -449,7 +465,7 @@ export function costBasis(movements: Movement[]): { costs: Partial<Record<Curren
   pools.forEach((p, currency) => {
     const avg = p.dep > 0 ? p.weighted / p.dep : 0;
     const units = Math.max(0, p.units);
-    if (avg > 0) costs[currency] = { currency, avg, units, costUsd: units / avg, deposits: p.deposits };
+    if (avg > 0) costs[currency] = { currency, avg, units, costUsd: units / avg, deposits: p.deposits, ...(p.rebase ? { rebase: p.rebase } : {}) };
   });
   return { costs, exchange: exchange.sort((a, b) => b.date.localeCompare(a.date)) };
 }
