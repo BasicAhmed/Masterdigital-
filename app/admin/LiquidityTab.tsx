@@ -87,7 +87,7 @@ function MovementForm({ kind, currency, data, onClose }: { kind: MovementKind; c
               hint={
                 kind === "deposit"
                   ? `بكم اشتريت؟ بيحدد تكلفتك الحقيقية${myAvg ? ` (متوسطك الآن ${formatSmart(myAvg)})` : ""}`
-                  : `بكم بعت؟ بيدخل في متوسط سعر السيولة وبيحسب ربح/خسارة الصرف${myAvg ? ` (متوسطك ${formatSmart(myAvg)})` : ""}`
+                  : `بكم بعت؟ بيحسب ربح/خسارة الصرف${myAvg ? ` (متوسطك ${formatSmart(myAvg)})` : ""}`
               }
             >
               <NumInput value={rate} onChange={setRate} suffix={cur} placeholder={market ? formatSmart(market) : ""} className="text-base" />
