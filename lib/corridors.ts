@@ -1,4 +1,6 @@
-export type CurrencyCode = "SDG" | "EGP" | "UGX" | "RWF" | "KES" | "SAR" | "AED" | "USDT" | "USD" | "USDSS";
+/** Built-in codes are below; the owner can add more from /admin
+ *  (settings/currencies), so a code is any string. */
+export type CurrencyCode = string;
 
 export interface CurrencyInfo {
   code: CurrencyCode;
@@ -36,6 +38,8 @@ export interface CurrencyPair {
  *  `b`", so it is never a tiny fraction). Add a currency once, in its place
  *  in this list, and every corridor with it is created automatically. */
 export const CURRENCY_ORDER: CurrencyCode[] = ["SDG", "UGX", "RWF", "KES", "EGP", "SAR", "AED", "USDT", "USD", "USDSS"];
+const BUILT_IN_ORDER = [...CURRENCY_ORDER];
+export const BUILT_IN_CODES = new Set(BUILT_IN_ORDER);
 
 /** Each PAIR is one corridor that works in both directions, priced from a
  *  single market price (see lib/rates.ts). Every currency is paired with
@@ -81,3 +85,83 @@ export function validToCurrencies(from: CurrencyCode): CurrencyInfo[] {
 export const FROM_CURRENCIES: CurrencyInfo[] = Array.from(
   new Set(PAIRS.flatMap((p) => [p.a, p.b]))
 ).map((c) => CURRENCIES[c]);
+
+/* ---------- Currencies added by the owner (settings/currencies) ---------- */
+
+export interface CustomCurrency {
+  code: string; // e.g. "ETB"
+  country: string; // e.g. "إثيوبيا"
+  currency: string; // e.g. "البر الإثيوبي"
+  flag: string; // emoji, may be empty
+  perUsd: number; // roughly how many units = 1 USD — decides its place in the list
+  decimals: number; // 0 or 2
+  binance: boolean; // try Binance P2P for its price
+  createdAt?: string;
+}
+
+/** Rough units per 1 USD of the built-in currencies — only used to slot an
+ *  added currency into CURRENCY_ORDER (pairs are stored as "more units per
+ *  fewer units"). Never used for pricing. */
+const APPROX_PER_USD: Record<string, number> = {
+  SDG: 10000, UGX: 3700, RWF: 1450, KES: 130, EGP: 50, SAR: 3.75, AED: 3.67, USDT: 1, USD: 1, USDSS: 1,
+};
+
+const listeners: (() => void)[] = [];
+/** Modules that keep their own copy of the list re-build it when this fires. */
+export function onCurrenciesChange(fn: () => void) {
+  listeners.push(fn);
+}
+
+let customSig = "";
+export let CUSTOM_CURRENCIES: CustomCurrency[] = [];
+
+export function cleanCustomCurrencies(raw: unknown): CustomCurrency[] {
+  const list = Array.isArray(raw) ? raw : [];
+  const seen = new Set<string>();
+  const out: CustomCurrency[] = [];
+  for (const r of list as Record<string, unknown>[]) {
+    const code = String(r?.code ?? "").trim().toUpperCase();
+    if (!/^[A-Z]{2,6}$/.test(code) || BUILT_IN_CODES.has(code) || seen.has(code)) continue;
+    const perUsd = Number(r.perUsd);
+    if (!(perUsd > 0)) continue;
+    seen.add(code);
+    out.push({
+      code,
+      country: String(r.country ?? code).slice(0, 40),
+      currency: String(r.currency ?? code).slice(0, 40),
+      flag: String(r.flag ?? "").slice(0, 8),
+      perUsd,
+      decimals: Number(r.decimals) === 2 ? 2 : 0,
+      binance: r.binance !== false,
+      ...(typeof r.createdAt === "string" ? { createdAt: r.createdAt } : {}),
+    });
+  }
+  return out;
+}
+
+/** Adds the owner's currencies to the lists every page uses. Safe to call
+ *  again with the same list (does nothing) or a new one (rebuilds). */
+export function registerCurrencies(raw: unknown) {
+  const list = cleanCustomCurrencies(raw);
+  const sig = JSON.stringify(list);
+  if (sig === customSig) return;
+  customSig = sig;
+  CUSTOM_CURRENCIES = list;
+
+  for (const code of Object.keys(CURRENCIES)) if (!BUILT_IN_CODES.has(code)) delete CURRENCIES[code];
+  for (const c of list) {
+    CURRENCIES[c.code] = { code: c.code, name: c.country, flag: c.flag || "💱", currency: c.currency };
+  }
+
+  // Slot each one in by size; ties keep the built-in first so stored pair
+  // keys of existing currencies never flip.
+  const order = [...BUILT_IN_ORDER];
+  for (const c of [...list].sort((x, y) => y.perUsd - x.perUsd)) {
+    const at = order.findIndex((code) => (APPROX_PER_USD[code] ?? CUSTOM_CURRENCIES.find((k) => k.code === code)?.perUsd ?? 0) < c.perUsd);
+    order.splice(at === -1 ? order.length : at, 0, c.code);
+  }
+  CURRENCY_ORDER.splice(0, CURRENCY_ORDER.length, ...order);
+  PAIRS.splice(0, PAIRS.length, ...CURRENCY_ORDER.flatMap((a, i) => CURRENCY_ORDER.slice(i + 1).map((b) => ({ a, b }))));
+  FROM_CURRENCIES.splice(0, FROM_CURRENCIES.length, ...CURRENCY_ORDER.map((c) => CURRENCIES[c]));
+  for (const fn of listeners) fn();
+}

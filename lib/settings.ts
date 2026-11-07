@@ -1,5 +1,6 @@
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db, firebaseEnabled } from "./firebase";
+import { cleanCustomCurrencies, registerCurrencies, type CustomCurrency } from "./corridors";
 import { AUTO_DEFAULT, readAutoUpdate, type AutoUpdateConfig } from "./autoUpdateConfig";
 
 const DEFAULT_MARGIN_PERCENT = 2.5;
@@ -173,4 +174,27 @@ export async function getAutoUpdate(): Promise<AutoUpdateConfig> {
 export async function setAutoUpdate(mode: AutoUpdateConfig["mode"], everyMinutes: number) {
   if (!firebaseEnabled || !db) throw new Error("Firebase is not configured — see .env.example.");
   await setDoc(doc(db, "settings", "autoUpdate"), { mode, everyMinutes, updatedAt: serverTimestamp() }, { merge: true });
+}
+
+/* ---------- Currencies added by the owner ---------- */
+
+/** Reads settings/currencies and adds them to every list. Call before
+ *  anything that walks the currencies (rates, pairs, prices). */
+export async function loadCustomCurrencies(): Promise<CustomCurrency[]> {
+  if (!firebaseEnabled || !db) return [];
+  try {
+    const snap = await getDoc(doc(db, "settings", "currencies"));
+    const list = cleanCustomCurrencies(snap.exists() ? snap.data().list : []);
+    registerCurrencies(list);
+    return list;
+  } catch {
+    return [];
+  }
+}
+
+export async function saveCustomCurrencies(list: CustomCurrency[]) {
+  if (!firebaseEnabled || !db) throw new Error("Firebase is not configured — see .env.example.");
+  const clean = cleanCustomCurrencies(list);
+  await setDoc(doc(db, "settings", "currencies"), { list: clean, updatedAt: serverTimestamp() });
+  registerCurrencies(clean);
 }

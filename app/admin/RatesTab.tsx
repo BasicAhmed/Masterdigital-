@@ -15,11 +15,13 @@ import {
 } from "@/lib/rates";
 import type { UsdtPrices } from "@/lib/fx";
 import UsdtPricesPanel from "./UsdtPricesPanel";
+import CurrenciesPanel from "./CurrenciesPanel";
+import { CUSTOM_CURRENCIES, type CustomCurrency } from "@/lib/corridors";
 import { logActivity } from "@/lib/activity";
 import { formatSmart as fs } from "@/lib/format";
 import { formatSmart } from "@/lib/format";
 import { formatRelativeTime } from "@/lib/relativeTime";
-import { flowKey, getAutoUpdate, setAutoUpdate, setDisabledFlows, setMarginPercent } from "@/lib/settings";
+import { flowKey, getAutoUpdate, saveCustomCurrencies, setAutoUpdate, setDisabledFlows, setMarginPercent } from "@/lib/settings";
 import { AUTO_DEFAULT, INTERVALS, intervalLabel, type AutoUpdateConfig, type UpdateMode } from "@/lib/autoUpdateConfig";
 import { PAIRS, CURRENCIES, CURRENCY_ORDER, type CurrencyCode } from "@/lib/corridors";
 import { demoMode } from "@/lib/store";
@@ -241,6 +243,29 @@ export default function RatesTab({ state, onError }: { state: RatesState; onErro
     setFxUpdating(false);
   }
 
+  /** Adds the currency, then prices it: Binance if it has it, otherwise the
+   *  rough rate he typed as a manual price — so its pairs exist right away. */
+  async function addCurrency(c: CustomCurrency): Promise<string | null> {
+    onError(null);
+    try {
+      await saveCustomCurrencies([...CUSTOM_CURRENCIES, c]);
+      logActivity({ kind: "rates", action: "create", refId: c.code, summary: `إضافة عملة ${c.code} — ${c.currency}` });
+      let got = false;
+      try {
+        const { updated, prices: next } = await updateRatesFromLiveFx();
+        applyPairs(updated);
+        setPrices(next);
+        got = !!next[c.code] && next[c.code]!.source !== "fx";
+      } catch {
+        /* fall back to his price below */
+      }
+      if (!got) await savePrice(c.code, c.perUsd, c.perUsd);
+      return null;
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err);
+    }
+  }
+
   async function savePrice(code: CurrencyCode, buy: number, sell: number): Promise<boolean> {
     setSavingPrice(code);
     onError(null);
@@ -391,6 +416,9 @@ export default function RatesTab({ state, onError }: { state: RatesState; onErro
 
       {/* 1 — one USDT price per currency; every pair is built from these */}
       <UsdtPricesPanel prices={prices} busy={savingPrice} onSave={savePrice} onReset={resetPrice} />
+
+      {/* 3 — currencies he adds himself */}
+      {!demoMode && <CurrenciesPanel onAdd={addCurrency} />}
 
       <div className="px-1 pt-2">
         <p className="font-display text-base font-bold text-ink">٢ · المسارات والهوامش</p>

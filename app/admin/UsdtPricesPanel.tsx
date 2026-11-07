@@ -15,7 +15,6 @@ const SOURCE_TONE: Record<PriceSource, string> = {
 };
 
 /** USDT is the base (always 1), so it isn't listed. */
-const LISTED = CURRENCY_ORDER.filter((c) => c !== "USDT");
 
 function Box({ label, value, strong }: { label: string; value: ReactNode; strong?: boolean }) {
   return (
@@ -236,7 +235,7 @@ export default function UsdtPricesPanel({
         </p>
       </div>
       <ul className="divide-y divide-border/50">
-        {LISTED.map((code) => (
+        {CURRENCY_ORDER.filter((c) => c !== "USDT").map((code) => (
           <Row
             key={code}
             code={code}

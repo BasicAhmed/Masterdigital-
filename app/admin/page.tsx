@@ -5,6 +5,7 @@ import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { RefreshCw } from "lucide-react";
 import { auth, firebaseEnabled } from "@/lib/firebase";
 import { DEMO_ME, loadMyAccess, type MyAccess } from "@/lib/staff";
+import { loadCustomCurrencies } from "@/lib/settings";
 import AdminLogin from "./Login";
 import AdminApp from "./AdminApp";
 import AccessScreen from "./Access";
@@ -39,8 +40,9 @@ export default function AdminPage() {
     if (!user) return;
     setAccess(null);
     setError("");
-    loadMyAccess(user.uid, user.email ?? "")
-      .then(setAccess)
+    // the owner's added currencies must be in the lists before the system opens
+    Promise.all([loadMyAccess(user.uid, user.email ?? ""), loadCustomCurrencies()])
+      .then(([a]) => setAccess(a))
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, [user]);
 

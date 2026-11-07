@@ -129,7 +129,9 @@ export async function getRatesWithMargin(): Promise<{ rates: RateRow[]; defaultM
     const rates = PAIRS.flatMap(({ a, b }) => {
       const key = pairKey(a, b);
       const entry = map.get(key);
-      const marketPrice = entry?.marketPrice ?? fallback.get(key)!;
+      const marketPrice = entry?.marketPrice ?? fallback.get(key);
+      // a newly added currency has no price on some pair yet — leave it out
+      if (typeof marketPrice !== "number" || !(marketPrice > 0)) return [];
       return rowsForPair(
         a,
         b,

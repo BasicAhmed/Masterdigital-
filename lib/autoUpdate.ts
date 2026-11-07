@@ -6,6 +6,7 @@ import { isReached } from "@/lib/alerts";
 import { CURRENCIES, isForwardDirection, isMultiplyCorridor } from "@/lib/corridors";
 import { formatRate } from "@/lib/format";
 import { AUTO_DEFAULT, readAutoUpdate } from "@/lib/autoUpdateConfig";
+import { registerCurrencies } from "@/lib/corridors";
 import type { Firestore } from "firebase-admin/firestore";
 
 export interface RunResult {
@@ -22,6 +23,13 @@ export interface RunResult {
  *  are kept as they are), rebuilds every pair + its history, then checks the
  *  price alerts. Used by the scheduled jobs and the public /api/rates/tick. */
 export async function runRateUpdate(db: Firestore): Promise<RunResult> {
+  // the owner's added currencies join the update too
+  try {
+    const cur = await db.collection("settings").doc("currencies").get();
+    registerCurrencies(cur.exists ? cur.data()?.list : []);
+  } catch {
+    /* keep the built-in list */
+  }
   let data;
   try {
     data = await fetchMarketData();

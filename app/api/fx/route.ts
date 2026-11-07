@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchMarketData } from "@/lib/fx";
+import { loadCustomCurrencies } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -10,6 +11,7 @@ export const maxDuration = 30;
  *  No secret needed, it's read-only public rate data. */
 export async function GET() {
   try {
+    await loadCustomCurrencies(); // added currencies are read from Binance too
     return NextResponse.json(await fetchMarketData());
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 502 });

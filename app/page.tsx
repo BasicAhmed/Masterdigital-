@@ -1,5 +1,6 @@
 import { getRates } from "@/lib/rates";
-import { getContactSettings, getDisabledFlows } from "@/lib/settings";
+import { getContactSettings, getDisabledFlows, loadCustomCurrencies } from "@/lib/settings";
+import CurrencyRegistry from "@/components/CurrencyRegistry";
 import { ContactProvider } from "@/components/ContactContext";
 import WhatsAppFab from "@/components/WhatsAppFab";
 import Nav from "@/components/Nav";
@@ -17,9 +18,11 @@ import Footer from "@/components/Footer";
 export const revalidate = 60; // re-fetch rates at most once a minute
 
 export default async function Home() {
+  const custom = await loadCustomCurrencies(); // before rates: new currencies add pairs
   const [rates, disabledFlows, contact] = await Promise.all([getRates(), getDisabledFlows(), getContactSettings()]);
 
   return (
+    <CurrencyRegistry list={custom}>
     <ContactProvider value={contact}>
       <Nav />
       <Hero rates={rates} disabledFlows={disabledFlows} />
@@ -34,5 +37,6 @@ export default async function Home() {
       <Footer />
       <WhatsAppFab />
     </ContactProvider>
+    </CurrencyRegistry>
   );
 }

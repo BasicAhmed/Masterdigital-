@@ -137,7 +137,7 @@ export default function Calculator({ rates, disabledFlows = [] }: { rates: RateR
       : 0;
 
   const activeCurrency = mode === "send" ? fromCurrency : toCurrency;
-  const quickAmounts = activeCurrency ? QUICK_AMOUNTS[activeCurrency.code] : [];
+  const quickAmounts = activeCurrency ? QUICK_AMOUNTS[activeCurrency.code] ?? [] : [];
 
   // Volume discount: send amount worth ≥1500 USDT gets a flat 15 USDT bonus,
   // added on top of what they'd normally receive.

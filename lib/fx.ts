@@ -1,4 +1,4 @@
-import { CURRENCY_ORDER, PAIRS, USD_PEGGED, type CurrencyCode } from "./corridors";
+import { CURRENCY_ORDER, CUSTOM_CURRENCIES, PAIRS, USD_PEGGED, onCurrenciesChange, type CurrencyCode } from "./corridors";
 
 /** Every price on the site starts from each currency's BUY and SELL price
  *  for 1 USDT. For the currencies below they come from Binance P2P, the same
@@ -9,6 +9,10 @@ import { CURRENCY_ORDER, PAIRS, USD_PEGGED, type CurrencyCode } from "./corridor
  *  The price used = the average of buy and sell, and every pair's market
  *  price is simply used(a) / used(b). */
 export const BINANCE_FIATS: CurrencyCode[] = ["SDG", "UGX", "RWF", "KES", "EGP", "SAR", "AED"];
+const BUILT_IN_FIATS = [...BINANCE_FIATS];
+onCurrenciesChange(() => {
+  BINANCE_FIATS.splice(0, BINANCE_FIATS.length, ...BUILT_IN_FIATS, ...CUSTOM_CURRENCIES.filter((c) => c.binance).map((c) => c.code));
+});
 
 export const SKIP_ADS = 2;
 export const USE_ADS = 5;
