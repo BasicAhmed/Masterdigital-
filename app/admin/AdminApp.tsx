@@ -304,7 +304,7 @@ export default function AdminApp({ me, onSignOut }: { me: Me; onSignOut?: () => 
 
   // `accounts` is a dependency: the ledger and balances read the account list
   const liquidity = useMemo(() => liquidityLedger(txs, obligations, movements), [txs, obligations, movements, accounts]); // eslint-disable-line react-hooks/exhaustive-deps
-  const { costs, exchange } = useMemo(() => costBasis(movements), [movements]);
+  const { costs, exchange } = useMemo(() => costBasis(movements, txs, usd), [movements, txs, usd]);
   const costUsd = useMemo(() => costTable(costs, usd), [costs, usd]);
   // dollar value of each balance at سعر السيولة (market only where there's no deposit rate)
   const balances = useMemo(() => computeBalances(liquidity, costUsd), [liquidity, costUsd, accounts]); // eslint-disable-line react-hooks/exhaustive-deps

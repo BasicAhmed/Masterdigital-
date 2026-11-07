@@ -149,7 +149,7 @@ function RebaseForm({ currency, data, onClose }: { currency: CurrencyCode; data:
       <div className="space-y-4">
         <div className="rounded-xl border border-border bg-surface p-3 text-xs leading-relaxed text-muted">
           الرصيد الحالي <b className="num text-ink" dir="ltr">{fmtMoney(held, currency)} {currency}</b> حيتسعّر بالسعر اللي تكتبه تحت.
-          بعد كده المتوسط يبدأ من جديد: الرصيد ده + الإيداعات الجاية بس. الإيداعات القديمة ما بتدخل في الحساب تاني، والأرصدة ما بتتغيّر.
+          بعد كده المتوسط يبدأ من جديد: الرصيد ده + الإيداعات وفلوس العملاء الجاية بس. الإيداعات القديمة ما بتدخل في الحساب تاني، والأرصدة ما بتتغيّر.
         </div>
 
         <Field label={`بكم تسعّر الـ ${fmtMoney(held, currency)} ${currency} اللي عندك الآن؟`} hint={`${currency} لكل 1 USDT`}>

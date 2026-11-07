@@ -422,11 +422,40 @@ export interface ExchangeLine {
  *  +10,000 @10,200 → 10,250, whatever was withdrawn in between).
  *  A withdrawal with a rate books gain/loss against the average at that
  *  moment: amount ÷ rate − amount ÷ average. */
-export function costBasis(movements: Movement[]): { costs: Partial<Record<CurrencyCode, CurrencyCost>>; exchange: ExchangeLine[] } {
-  const ordered = [...movements].sort((a, b) => (a.date + a.createdAt).localeCompare(b.date + b.createdAt));
+export function costBasis(
+  movements: Movement[],
+  txs: Transaction[] = [],
+  market: Record<string, number> = {}
+): { costs: Partial<Record<CurrencyCode, CurrencyCost>>; exchange: ExchangeLine[] } {
+  // Customer deals count too: the money a customer hands over is bought at
+  // that deal's rate — its value is what we paid out, at the paid currency's
+  // average at that moment (market when there's no average yet).
+  type Ev = { at: string; m?: Movement; t?: Transaction };
+  const events: Ev[] = [
+    ...movements.map((m) => ({ at: m.date + m.createdAt, m })),
+    ...txs.filter((t) => t.status === "completed").map((t) => ({ at: t.date + (t.createdAt ?? ""), t })),
+  ].sort((a, b) => a.at.localeCompare(b.at));
+  const avgOf = (c: CurrencyCode) => {
+    if (c === BASE) return 1;
+    const p = pools.get(c);
+    return p && p.dep > 0 ? p.weighted / p.dep : market[c] ?? 0;
+  };
   const pools = new Map<CurrencyCode, { dep: number; weighted: number; units: number; deposits: number; rebase?: CurrencyCost["rebase"] }>();
   const exchange: ExchangeLine[] = [];
-  for (const m of ordered) {
+  for (const ev of events) {
+    if (ev.t) {
+      const t = ev.t;
+      if (t.from === BASE) continue;
+      const inAmount = t.amount + (t.feeSide === "from" ? t.fee : 0);
+      const outUsd = t.to === BASE ? t.payout : avgOf(t.to) ? t.payout / avgOf(t.to) : 0;
+      if (!inAmount || !outUsd) continue;
+      const p = pools.get(t.from) ?? { dep: 0, weighted: 0, units: 0, deposits: 0 };
+      pools.set(t.from, p);
+      p.dep += inAmount;
+      p.weighted += inAmount * (inAmount / outUsd);
+      continue;
+    }
+    const m = ev.m!;
     if (m.currency === BASE || m.kind === "transfer") continue; // moving between own accounts changes nothing
     const p = pools.get(m.currency) ?? { dep: 0, weighted: 0, units: 0, deposits: 0 };
     pools.set(m.currency, p);
