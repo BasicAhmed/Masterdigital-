@@ -162,8 +162,11 @@ export default function TransactionForm({
   const keptOld = !!edit && cost === edit.cost;
   const saved = keptOld ? liquidityRatesOf(edit!) : null;
   const liveCost = costOf(from, to) ?? 0;
-  const rateFrom = saved?.from ?? usd[from] ?? 0;
+  // An old deal whose rates can't be worked back (it had fees): keep its saved
+  // cost, and derive the "from" rate from it so the two always agree.
   const rateTo = saved?.to ?? usd[to] ?? 0;
+  const pu = perUnit(from, to, cost);
+  const rateFrom = saved?.from ?? (keptOld && pu && rateTo ? rateTo / pu : usd[from] ?? 0);
   const calc = computeTx({ from, to, amount: num(amount), rate, cost, fee: feeNow, feeSide, expense: num(expense), expenseSide, usd: { ...usd, [from]: rateFrom, [to]: rateTo } });
   const both = num(amount) > 0 && num(received) > 0;
   const isLoss = both && calc.profitUsd < -1e-9;

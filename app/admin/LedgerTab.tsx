@@ -8,6 +8,7 @@ import { fmtMoney, fmtUsd, todayStr } from "@/lib/format";
 import { downloadCsv } from "@/lib/data";
 import {
   KIND_LABEL,
+  accountLabel,
   accountsOf,
   validAccount,
   blankObligation,
@@ -434,7 +435,7 @@ export default function LedgerTab({ data }: { data: AdminData }) {
                   <ul className="mt-2 space-y-1 border-t border-border/50 pt-2">
                     {o.payments.map((p) => (
                       <li key={p.id} className="num flex justify-between text-[11px] text-subtle" dir="ltr">
-                        <span>{p.date}{p.note ? ` — ${p.note}` : ""}</span>
+                        <span>{p.date}{p.account ? ` · ${accountLabel(o.currency, p.account)}` : ""}{p.note ? ` — ${p.note}` : ""}</span>
                         <span className="font-semibold text-muted">{fmtMoney(p.amount, o.currency)}</span>
                       </li>
                     ))}

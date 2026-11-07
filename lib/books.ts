@@ -233,6 +233,8 @@ export interface Movement extends Stamped {
   /** Withdrawals only: this rate also moves the average —
    *  new average = (balance × average + amount × rate) ÷ (balance + amount). */
   inAvg?: boolean;
+  /** The real balance just before that withdrawal (saved with it). */
+  heldBefore?: number;
   /** The rate of this deposit / withdrawal: units of the currency per
    *  1 USDT (e.g. 8,800 SDG). Deposits with a rate set the average cost;
    *  withdrawals with a rate show the exchange gain or loss. */
@@ -419,12 +421,15 @@ export interface ExchangeLine {
   by?: string;
 }
 
-/** سعر السيولة = «متوسط الإيداع»: the average rate of EVERY deposit that has
- *  a rate, weighted by amount — Σ(amount × rate) ÷ Σ amount. Withdrawals never
- *  change it, even when they empty the balance (e.g. +10,000 @10,300 and
- *  +10,000 @10,200 → 10,250, whatever was withdrawn in between).
- *  A withdrawal with a rate books gain/loss against the average at that
- *  moment: amount ÷ rate − amount ÷ average. */
+/** سعر السيولة of each currency, walked in date order:
+ *  - deposits with a rate and money received from customers (at the deal's
+ *    rate) build an amount-weighted average: Σ(amount × rate) ÷ Σ amount;
+ *  - a normal withdrawal doesn't change it; if it has a rate it books an
+ *    exchange gain/loss = amount ÷ rate − amount ÷ average;
+ *  - a withdrawal marked «يدخل في المتوسط» moves it instead:
+ *    (balance × average + amount × rate) ÷ (balance + amount) — no separate
+ *    gain/loss, or it would count twice;
+ *  - «إعادة ضبط» starts over from the balance at the price he chose. */
 export function costBasis(
   movements: Movement[],
   txs: Transaction[] = [],
@@ -448,6 +453,11 @@ export function costBasis(
   for (const ev of events) {
     if (ev.t) {
       const t = ev.t;
+      if (t.to !== BASE) {
+        const q = pools.get(t.to) ?? { dep: 0, weighted: 0, units: 0, deposits: 0 };
+        pools.set(t.to, q);
+        q.units -= t.payout;
+      }
       if (t.from === BASE) continue;
       const inAmount = t.amount + (t.feeSide === "from" ? t.fee : 0);
       const outUsd = t.to === BASE ? t.payout : avgOf(t.to) ? t.payout / avgOf(t.to) : 0;
@@ -457,11 +467,6 @@ export function costBasis(
       p.dep += inAmount;
       p.weighted += inAmount * (inAmount / outUsd);
       p.units += inAmount;
-      if (t.to !== BASE) {
-        const q = pools.get(t.to) ?? { dep: 0, weighted: 0, units: 0, deposits: 0 };
-        pools.set(t.to, q);
-        q.units -= t.payout;
-      }
       continue;
     }
     const m = ev.m!;
@@ -486,14 +491,14 @@ export function costBasis(
       p.dep += m.amount;
       p.weighted += m.amount * rate;
       p.deposits++;
+    } else if (m.inAvg) {
+      // average what he held just before this withdrawal with its rate
+      const avg = p.dep > 0 ? p.weighted / p.dep : rate;
+      const held = Math.max(0, m.heldBefore ?? p.units + m.amount);
+      p.dep = held + m.amount;
+      p.weighted = held * avg + m.amount * rate;
     } else if (p.dep > 0) {
       const avg = p.weighted / p.dep;
-      if (m.inAvg) {
-        // average what he still held (before this withdrawal) with this rate
-        const held = Math.max(0, p.units + m.amount);
-        p.dep = held + m.amount;
-        p.weighted = held * avg + m.amount * rate;
-      }
       exchange.push({
         id: m.id,
         date: m.date,

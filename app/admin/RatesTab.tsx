@@ -91,8 +91,16 @@ export default function RatesTab({ state, onError }: { state: RatesState; onErro
   useEffect(() => {
     getUsdtPrices().then(setPrices);
     getAutoUpdate().then(setAuto);
-    // nudge the scheduler: if an automatic update is due, it runs now
-    fetch("/api/rates/tick", { method: "POST" }).catch(() => {});
+    // nudge the scheduler: if an automatic update is due, it runs now —
+    // then show the fresh prices and "last automatic update" time
+    fetch("/api/rates/tick", { method: "POST" })
+      .then((r) => r.json())
+      .then((out) => {
+        if (!out?.ran) return;
+        getAutoUpdate().then(setAuto);
+        getUsdtPrices().then(setPrices);
+      })
+      .catch(() => {});
   }, []);
   const lastUpdated = rates
     .map((r) => r.updatedAt)

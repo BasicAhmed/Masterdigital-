@@ -33,7 +33,7 @@ function MovementForm({ kind, currency, data, onClose }: { kind: MovementKind; c
   const myAvg = data.costs[cur]?.avg;
   const market = data.usd[cur];
   // a withdrawal with a rate: what he gets vs what that money cost him
-  const gain = kind === "withdraw" && a && r && myAvg ? a / r - a / myAvg : null;
+  const gain = kind === "withdraw" && !inAvg && a && r && myAvg ? a / r - a / myAvg : null;
   const cats = accountsOf(cur);
   const curBalance = data.balances.find((b) => b.currency === cur);
   const available = cats.length ? curBalance?.accounts.find((x) => x.id === account)?.balance ?? 0 : curBalance?.balance ?? 0;
@@ -134,7 +134,7 @@ function MovementForm({ kind, currency, data, onClose }: { kind: MovementKind; c
           onClick={async () => {
             setSaving(true);
             try {
-              await data.upsertMovement({ id: newId(), date, currency: cur, kind, amount: a, note: note.trim(), account: validAccount(cur, account), ...(hasRate && r > 0 ? { rate: r } : {}), ...(kind === "withdraw" && hasRate && r > 0 && inAvg ? { inAvg: true } : {}), createdAt: new Date().toISOString() });
+              await data.upsertMovement({ id: newId(), date, currency: cur, kind, amount: a, note: note.trim(), account: validAccount(cur, account), ...(hasRate && r > 0 ? { rate: r } : {}), ...(kind === "withdraw" && hasRate && r > 0 && inAvg ? { inAvg: true, heldBefore: held } : {}), createdAt: new Date().toISOString() });
               onClose();
             } catch {
               setSaving(false);
