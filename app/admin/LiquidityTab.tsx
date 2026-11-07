@@ -26,6 +26,7 @@ function MovementForm({ kind, currency, data, onClose }: { kind: MovementKind; c
   const [note, setNote] = useState("");
   const [rate, setRate] = useState("");
   const [saving, setSaving] = useState(false);
+  const [inAvg, setInAvg] = useState(true);
   const a = parseFloat(amount) || 0;
   const r = parseFloat(rate) || 0;
   const hasRate = cur !== "USDT"; // USDT is the base — always 1
@@ -37,6 +38,9 @@ function MovementForm({ kind, currency, data, onClose }: { kind: MovementKind; c
   const curBalance = data.balances.find((b) => b.currency === cur);
   const available = cats.length ? curBalance?.accounts.find((x) => x.id === account)?.balance ?? 0 : curBalance?.balance ?? 0;
   const availableLabel = cats.length ? accountLabel(cur, account) : "";
+  // withdrawal counted in the average: (balance × average + amount × rate) ÷ (balance + amount)
+  const held = Math.max(0, curBalance?.balance ?? 0);
+  const newAvg = kind === "withdraw" && inAvg && a && r && myAvg ? (held * myAvg + a * r) / (held + a) : null;
 
   return (
     <Modal title={kind === "deposit" ? "إيداع في السيولة" : "سحب من السيولة"} onClose={onClose}>
@@ -109,6 +113,19 @@ function MovementForm({ kind, currency, data, onClose }: { kind: MovementKind; c
             <span className="num" dir="ltr">{formatSmart(r)}</span> ومتوسطك <span className="num" dir="ltr">{formatSmart(myAvg!)}</span>
           </p>
         )}
+        {kind === "withdraw" && hasRate && r > 0 && (
+          <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-border p-3">
+            <input type="checkbox" checked={inAvg} onChange={(e) => setInAvg(e.target.checked)} className="mt-0.5 size-4 accent-[#1e3a8a]" />
+            <span className="text-xs leading-relaxed">
+              <b className="text-ink">يدخل في متوسط سعر السيولة</b>
+              <span className="block text-muted">
+                {newAvg
+                  ? <>المتوسط حيصير <b className="num text-ink" dir="ltr">{formatSmart(newAvg)}</b> بدل <span className="num" dir="ltr">{formatSmart(myAvg!)}</span> — (الرصيد × المتوسط + المبلغ × السعر) ÷ (الرصيد + المبلغ)</>
+                  : "لو شلت العلامة، السحب ما بيغيّر المتوسط."}
+              </span>
+            </span>
+          </label>
+        )}
         {kind === "withdraw" && a > available && (
           <p className="text-xs font-semibold text-amber-600">السحب أكبر من الرصيد الحالي — الرصيد حيبقى بالسالب.</p>
         )}
@@ -117,7 +134,7 @@ function MovementForm({ kind, currency, data, onClose }: { kind: MovementKind; c
           onClick={async () => {
             setSaving(true);
             try {
-              await data.upsertMovement({ id: newId(), date, currency: cur, kind, amount: a, note: note.trim(), account: validAccount(cur, account), ...(hasRate && r > 0 ? { rate: r } : {}), createdAt: new Date().toISOString() });
+              await data.upsertMovement({ id: newId(), date, currency: cur, kind, amount: a, note: note.trim(), account: validAccount(cur, account), ...(hasRate && r > 0 ? { rate: r } : {}), ...(kind === "withdraw" && hasRate && r > 0 && inAvg ? { inAvg: true } : {}), createdAt: new Date().toISOString() });
               onClose();
             } catch {
               setSaving(false);

@@ -230,6 +230,9 @@ export interface Movement extends Stamped {
   account?: string;
   /** Transfers only: the account it went into (same currency). */
   toAccount?: string;
+  /** Withdrawals only: this rate also moves the average —
+   *  new average = (balance × average + amount × rate) ÷ (balance + amount). */
+  inAvg?: boolean;
   /** The rate of this deposit / withdrawal: units of the currency per
    *  1 USDT (e.g. 8,800 SDG). Deposits with a rate set the average cost;
    *  withdrawals with a rate show the exchange gain or loss. */
@@ -453,6 +456,12 @@ export function costBasis(
       pools.set(t.from, p);
       p.dep += inAmount;
       p.weighted += inAmount * (inAmount / outUsd);
+      p.units += inAmount;
+      if (t.to !== BASE) {
+        const q = pools.get(t.to) ?? { dep: 0, weighted: 0, units: 0, deposits: 0 };
+        pools.set(t.to, q);
+        q.units -= t.payout;
+      }
       continue;
     }
     const m = ev.m!;
@@ -466,6 +475,7 @@ export function costBasis(
       p.dep = Math.max(0, m.amount);
       p.weighted = p.dep * rate;
       p.deposits = 0;
+      p.units = Math.max(0, m.amount);
       p.rebase = { id: m.id, date: m.date, rate, amount: m.amount };
       if (!p.dep) { p.dep = 1e-9; p.weighted = 1e-9 * rate; } // empty balance: keep the chosen rate
       continue;
@@ -478,6 +488,12 @@ export function costBasis(
       p.deposits++;
     } else if (p.dep > 0) {
       const avg = p.weighted / p.dep;
+      if (m.inAvg) {
+        // average what he still held (before this withdrawal) with this rate
+        const held = Math.max(0, p.units + m.amount);
+        p.dep = held + m.amount;
+        p.weighted = held * avg + m.amount * rate;
+      }
       exchange.push({
         id: m.id,
         date: m.date,
