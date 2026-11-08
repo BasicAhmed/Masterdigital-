@@ -348,7 +348,7 @@ function AccountsManager({ data, onClose }: { data: AdminData; onClose: () => vo
     <Modal title="حسابات السيولة" onClose={onClose}>
       <div className="space-y-4">
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="العملة">
-          {CURRENCY_LIST.filter((c) => c.code !== "USDT").map((c) => (
+          {CURRENCY_LIST.map((c) => (
             <button
               key={c.code}
               onClick={() => setCur(c.code)}

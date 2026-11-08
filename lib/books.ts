@@ -150,6 +150,10 @@ export interface AccountDef {
 export type AccountMap = Partial<Record<CurrencyCode, AccountDef[]>>;
 
 export const DEFAULT_ACCOUNTS: AccountMap = {
+  USDT: [
+    { id: "usdt-binance", label: "Binance" },
+    { id: "usdt-visa", label: "الفيزا" },
+  ],
   SDG: [
     { id: "sdg-bankak-1", label: "بنكك 1" },
     { id: "sdg-bankak-2", label: "بنكك 2" },
@@ -182,7 +186,11 @@ export function setAccountRegistry(map: AccountMap) {
 
 export async function getAccounts(): Promise<AccountMap> {
   const saved = await readDoc<{ accounts?: AccountMap }>("settings", "accounts").catch(() => null);
-  return saved?.accounts ?? DEFAULT_ACCOUNTS;
+  if (!saved?.accounts) return DEFAULT_ACCOUNTS;
+  // currencies he never set up get the starter accounts (USDT: Binance, الفيزا)
+  const out: AccountMap = { ...saved.accounts };
+  for (const [code, list] of Object.entries(DEFAULT_ACCOUNTS)) if (!(code in out)) out[code] = list;
+  return out;
 }
 
 export const saveAccounts = (accounts: AccountMap) => saveDoc("settings", { id: "accounts", accounts, updatedAt: new Date().toISOString() });
