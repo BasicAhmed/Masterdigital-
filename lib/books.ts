@@ -429,101 +429,88 @@ export interface ExchangeLine {
   by?: string;
 }
 
-/** سعر السيولة of each currency, walked in date order:
- *  - deposits with a rate and money received from customers (at the deal's
- *    rate) build an amount-weighted average: Σ(amount × rate) ÷ Σ amount;
- *  - a normal withdrawal doesn't change it; if it has a rate it books an
- *    exchange gain/loss = amount ÷ rate − amount ÷ average;
- *  - a withdrawal marked «يدخل في المتوسط» moves it instead:
- *    (balance × average + amount × rate) ÷ (balance + amount) — no separate
- *    gain/loss, or it would count twice;
- *  - «إعادة ضبط» starts over from the balance at the price he chose. */
+/** سعر السيولة of each currency = the average price of ALL the money in hand,
+ *  walked in date order (owner's rule):
+ *  - a deposit with a rate mixes in at its rate:
+ *      average = (held × average + amount × rate) ÷ (held + amount)
+ *    e.g. 4,000,000 @10,150 + 4,000,000 @10,300 → 10,225;
+ *  - money from customers, loans and any deposit without a rate joins the
+ *    balance at the current average (so the average stays, the balance grows);
+ *  - money going out (payouts, withdrawals, expenses) leaves at the average;
+ *    a withdrawal with a rate books an exchange gain/loss against it, or —
+ *    when marked «يدخل في المتوسط» — mixes its rate in like a deposit;
+ *  - when the balance is empty, the next deposit sets the average;
+ *  - «إعادة ضبط» prices the balance at the rate he chose.
+ *  Transfers between own accounts change nothing. */
 export function costBasis(
   movements: Movement[],
-  txs: Transaction[] = [],
-  market: Record<string, number> = {}
+  txs: Transaction[],
+  lines: LiquidityLine[]
 ): { costs: Partial<Record<CurrencyCode, CurrencyCost>>; exchange: ExchangeLine[] } {
-  // Customer deals count too: the money a customer hands over is bought at
-  // that deal's rate — its value is what we paid out, at the paid currency's
-  // average at that moment (market when there's no average yet).
-  type Ev = { at: string; m?: Movement; t?: Transaction };
-  const events: Ev[] = [
-    ...movements.map((m) => ({ at: m.date + m.createdAt, m })),
-    ...txs.filter((t) => t.status === "completed").map((t) => ({ at: t.date + (t.createdAt ?? ""), t })),
-  ].sort((a, b) => a.at.localeCompare(b.at));
-  const avgOf = (c: CurrencyCode) => {
-    if (c === BASE) return 1;
-    const p = pools.get(c);
-    return p && p.dep > 0 ? p.weighted / p.dep : market[c] ?? 0;
-  };
-  const pools = new Map<CurrencyCode, { dep: number; weighted: number; units: number; deposits: number; rebase?: CurrencyCost["rebase"] }>();
+  const mv = new Map(movements.map((m) => [m.id, m]));
+  const txAt = new Map(txs.map((t) => [t.id, t.createdAt ?? ""]));
+  type Ev = { at: string; currency: CurrencyCode; delta: number; m?: Movement };
+  const events: Ev[] = [];
+  for (const l of lines) {
+    if (l.internal) continue;
+    const m = l.source === "manual" || l.source === "expense" ? mv.get(l.refId) : undefined;
+    events.push({ at: l.date + (m?.createdAt ?? txAt.get(l.refId) ?? ""), currency: l.currency, delta: l.delta, m });
+  }
+  for (const m of movements) if (m.kind === "rebase") events.push({ at: m.date + m.createdAt, currency: m.currency, delta: 0, m });
+  events.sort((a, b) => a.at.localeCompare(b.at));
+
+  const pools = new Map<CurrencyCode, { held: number; avg: number; deposits: number; rebase?: CurrencyCost["rebase"] }>();
   const exchange: ExchangeLine[] = [];
-  for (const ev of events) {
-    if (ev.t) {
-      const t = ev.t;
-      if (t.to !== BASE) {
-        const q = pools.get(t.to) ?? { dep: 0, weighted: 0, units: 0, deposits: 0 };
-        pools.set(t.to, q);
-        q.units -= t.payout;
-      }
-      if (t.from === BASE) continue;
-      const inAmount = t.amount + (t.feeSide === "from" ? t.fee : 0);
-      const outUsd = t.to === BASE ? t.payout : avgOf(t.to) ? t.payout / avgOf(t.to) : 0;
-      if (!inAmount || !outUsd) continue;
-      const p = pools.get(t.from) ?? { dep: 0, weighted: 0, units: 0, deposits: 0 };
-      pools.set(t.from, p);
-      p.dep += inAmount;
-      p.weighted += inAmount * (inAmount / outUsd);
-      p.units += inAmount;
-      continue;
-    }
-    const m = ev.m!;
-    if (m.currency === BASE || m.kind === "transfer") continue; // moving between own accounts changes nothing
-    const p = pools.get(m.currency) ?? { dep: 0, weighted: 0, units: 0, deposits: 0 };
-    pools.set(m.currency, p);
-    const rate = typeof m.rate === "number" && m.rate > 0 ? m.rate : 0;
-    if (m.kind === "rebase") {
-      // start over: what's in hand now, at the price he chose
+  for (const e of events) {
+    if (e.currency === BASE) continue;
+    const p = pools.get(e.currency) ?? { held: 0, avg: 0, deposits: 0 };
+    pools.set(e.currency, p);
+    const m = e.m;
+    const rate = m && typeof m.rate === "number" && m.rate > 0 ? m.rate : 0;
+    const held = Math.max(0, p.held);
+
+    if (m?.kind === "rebase") {
       if (!rate) continue;
-      p.dep = Math.max(0, m.amount);
-      p.weighted = p.dep * rate;
+      p.avg = rate;
+      p.held = Math.max(0, m.amount);
       p.deposits = 0;
-      p.units = Math.max(0, m.amount);
       p.rebase = { id: m.id, date: m.date, rate, amount: m.amount };
-      if (!p.dep) { p.dep = 1e-9; p.weighted = 1e-9 * rate; } // empty balance: keep the chosen rate
       continue;
     }
-    p.units += m.kind === "deposit" ? m.amount : -m.amount;
-    if (!rate) continue;
-    if (m.kind === "deposit") {
-      p.dep += m.amount;
-      p.weighted += m.amount * rate;
-      p.deposits++;
-    } else if (m.inAvg) {
-      // average what he held just before this withdrawal with its rate
-      const avg = p.dep > 0 ? p.weighted / p.dep : rate;
-      const held = Math.max(0, m.heldBefore ?? p.units + m.amount);
-      p.dep = held + m.amount;
-      p.weighted = held * avg + m.amount * rate;
-    } else if (p.dep > 0) {
-      const avg = p.weighted / p.dep;
-      exchange.push({
-        id: m.id,
-        date: m.date,
-        currency: m.currency,
-        amount: m.amount,
-        rate,
-        avg,
-        gainUsd: m.amount / rate - m.amount / avg,
-        by: m.createdByName,
-      });
+    if (e.delta > 0) {
+      if (m?.kind === "deposit" && rate) {
+        p.avg = held > 0 && p.avg > 0 ? (held * p.avg + e.delta * rate) / (held + e.delta) : rate;
+        p.deposits++;
+      }
+      p.held += e.delta;
+      continue;
     }
+    // money out
+    const out = -e.delta;
+    if (m?.kind === "withdraw" && rate) {
+      if (m.inAvg) {
+        const h = Math.max(0, m.heldBefore ?? held);
+        p.avg = h > 0 && p.avg > 0 ? (h * p.avg + out * rate) / (h + out) : rate;
+      } else if (p.avg > 0) {
+        exchange.push({
+          id: m.id,
+          date: m.date,
+          currency: m.currency,
+          amount: out,
+          rate,
+          avg: p.avg,
+          gainUsd: out / rate - out / p.avg,
+          by: m.createdByName,
+        });
+      }
+    }
+    p.held -= out;
   }
   const costs: Partial<Record<CurrencyCode, CurrencyCost>> = {};
   pools.forEach((p, currency) => {
-    const avg = p.dep > 0 ? p.weighted / p.dep : 0;
-    const units = Math.max(0, p.units);
-    if (avg > 0) costs[currency] = { currency, avg, units, costUsd: units / avg, deposits: p.deposits, ...(p.rebase ? { rebase: p.rebase } : {}) };
+    if (!(p.avg > 0)) return;
+    const units = Math.max(0, p.held);
+    costs[currency] = { currency, avg: p.avg, units, costUsd: units / p.avg, deposits: p.deposits, ...(p.rebase ? { rebase: p.rebase } : {}) };
   });
   return { costs, exchange: exchange.sort((a, b) => b.date.localeCompare(a.date)) };
 }
